@@ -1,7 +1,26 @@
 exporter:
   databaseID: aaaabbbbccccddddeeee # Specify your databaseID
   databaseQuery: > # To filter your pages
+      {
+        "filter": {
+          "and": [
+            {
+              "property": "Edited At",
+              "date": {
+                "after": "{{.Date}}T00:00:00Z"
+              }
+            }
+          ]
+        },
+        "sorts": [
+          {
+              "property": "Created At",
+              "direction": "ascending"
+          }
+        ]
+      }
 
+  lookbackDays: 1
   directory: "backup/" # Write files to directory (create it first)
   useTitleAsFilename: false
 
