@@ -98,13 +98,13 @@ func (m *Markdown) transformFrontMatter(env *markdownEnv, page *notion.Page) {
 	env.b.WriteString("---\n\n")
 }
 
-func (m *Markdown) transformNonFrontMatter(env *markdownEnv, page *notion.Page) {
+func (m *Markdown) transformMetadata(env *markdownEnv, page *notion.Page) {
 	props, ok := page.Properties.(notion.DatabasePageProperties)
 	if !ok {
 		return
 	}
 
-	keys := m.config.NonFrontMatters
+	keys := m.config.Metadata
 	if len(keys) == 0 {
 		for key, prop := range props {
 			if !m.isFrontMatterType(prop.Type) {

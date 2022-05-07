@@ -19,12 +19,12 @@ type Markdown struct {
 }
 
 type MarkdownConfig struct {
-	NoAlias         bool     `yaml:"noAlias"`
-	NoFrontMatters  bool     `yaml:"noFrontMatters"`
-	TitleToH1       bool     `yaml:"titleToH1"`
-	SelectToTags    bool     `yaml:"selectToTags"`
-	FrontMatters    []string `yaml:"frontMatters"`
-	NonFrontMatters []string `yaml:"nonFrontMatters"`
+	NoAlias        bool     `yaml:"noAlias"`
+	NoFrontMatters bool     `yaml:"noFrontMatters"`
+	TitleToH1      bool     `yaml:"titleToH1"`
+	SelectToTags   bool     `yaml:"selectToTags"`
+	FrontMatters   []string `yaml:"frontMatters"`
+	Metadata       []string `yaml:"metadata"`
 }
 
 type markdownEnv struct {
@@ -75,9 +75,9 @@ func (m *Markdown) TransformOut(b io.StringWriter) {
 		env.b.WriteString("\n\n")
 	}
 
-	// write page properties as non front matters
+	// write page properties as metadata
 	if m.page != nil {
-		m.transformNonFrontMatter(env, m.page)
+		m.transformMetadata(env, m.page)
 	}
 
 	// write page blocks
