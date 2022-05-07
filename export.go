@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/dstotijn/go-notion"
 	"github.com/zhuochun/notion-toolset/transformer"
@@ -18,7 +19,8 @@ type ExporterConfig struct {
 	DatabaseID    string `yaml:"databaseID"`
 	DatabaseQuery string `yaml:"databaseQuery"`
 	// export related
-	Directory          string   `yaml:"directory"`
+	LookbackDays       int      `yaml:"lookbackDays"` // leave this empty for full backup
+	Directory          string   `yaml:"directory"`    // output directory
 	UseTitleAsFilename bool     `yaml:"useTitleAsFilename"`
 	ReplaceTitle       []string `yaml:"replaceTitle"`
 	// transformer
@@ -104,7 +106,12 @@ func (e *Exporter) precheck() error {
 func (e *Exporter) ScanPages() (chan []notion.Page, chan error) {
 	q := NewDatabaseQuery(e.Client, e.DatabaseID)
 
-	if err := q.SetQuery(e.DatabaseQuery, QueryBuilder{}); err != nil {
+	date := "" // default
+	if e.LookbackDays > 0 {
+		date = time.Now().AddDate(0, 0, -e.LookbackDays).Format(layoutDate)
+	}
+
+	if err := q.SetQuery(e.DatabaseQuery, QueryBuilder{Date: date}); err != nil {
 		log.Panicf("Invalid query: %v, err: %v", e.DatabaseQuery, err)
 	}
 
