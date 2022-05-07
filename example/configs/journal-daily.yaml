@@ -1,0 +1,43 @@
+dailyJournal:
+  databaseID: aaaabbbbccccddddeeee # Specify your journal databaseID
+  limit: 45 # Number of journals to create each time from the current date
+  pageQuery: > # Filter the existed journals
+    {
+        "filter": {
+            "and": [
+                {
+                    "property": "Date",
+                    "date": {
+                        "after": "{{.Date}}T00:00:00Z"
+                    }
+                }
+            ]
+        },
+        "sorts": [
+            {
+                "property": "Date",
+                "direction": "ascending"
+            }
+        ]
+    }
+  pageProperties: > # Properties when create the new journals
+    {
+        "Date": {
+            "type": "date",
+            "date": {
+                "start": "{{.Date}}",
+                "end": null
+            }
+        },
+        "Name": {
+            "type": "title",
+            "title": [
+                {
+                    "type": "text",
+                    "text": {
+                        "content": "{{.Title}}"
+                    }
+                }
+            ]
+        }
+    }

@@ -1,0 +1,48 @@
+flashback:
+  databaseID: aaaabbbbccccddddeeee # Specify your databaseID
+  databaseQuery: > # You need to have a Date related property
+    {
+        "filter": {
+            "and": [
+                {
+                    "property": "Created At",
+                    "date": {
+                        "on_or_before": "{{.Date}}T00:00:00Z"
+                    }
+                }
+            ]
+        },
+        "sorts": [
+            {
+                "property": "Created At",
+                "direction": "descending"
+            }
+        ]
+    }
+  oldestTimestamp: "2020-09-27T00:00:00Z" # Set to the oldest page Date timestamp
+  flashbackNum: 1 # How many flashback to create
+  flashbackPageID: aaaabbbbccccddddeeee # Write to BlockID
+  flashbackPageBlock: >
+    {
+        "object": "block",
+        "type": "paragraph",
+        "paragraph": {
+            "text": [
+                {
+                    "type": "text",
+                    "text": {
+                        "content": "{{.Date}} "
+                    }
+                },
+                {
+                    "type": "mention",
+                    "mention": {
+                        "type": "page",
+                        "page": {
+                            "id": "{{.PageID}}"
+                        }
+                    }
+                }
+            ]
+        }
+    }

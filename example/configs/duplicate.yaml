@@ -1,0 +1,21 @@
+duplicateChecker:
+  databaseID: aaaabbbbccccddddeeee # Specify your databaseID
+  duplicateDumpID: aaaabbbbccccddddeeee # Write to BlockID
+  duplicateDumpBlock: >
+    {
+        "object": "block",
+        "type": "paragraph",
+        "paragraph": {
+            "text": [
+                {
+                    "type": "mention",
+                    "mention": {
+                        "type": "page",
+                        "page": {
+                            "id": "{{.PageID}}"
+                        }
+                    }
+                }
+            ]
+        }
+    }

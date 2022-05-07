@@ -1,0 +1,10 @@
+exporter:
+  databaseID: aaaabbbbccccddddeeee # Specify your databaseID
+  databaseQuery: > # To filter your pages
+
+  directory: "backup/" # Write files to directory (create it first)
+  useTitleAsFilename: false
+
+  markdown: # There might be more settings, refer to code
+    noAlias: true
+    titleToH1: true

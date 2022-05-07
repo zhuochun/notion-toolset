@@ -1,0 +1,43 @@
+weeklyJournal:
+  databaseID: aaaabbbbccccddddeeee # Specify your journal databaseID
+  limit: 9 # Number of journals to create each time from the current date
+  pageQuery: >
+    {
+        "filter": {
+            "and": [
+                {
+                    "property": "Period",
+                    "date": {
+                        "on_or_after": "{{.Date}}T00:00:00Z"
+                    }
+                }
+            ]
+        },
+        "sorts": [
+            {
+                "property": "Period",
+                "direction": "ascending"
+            }
+        ]
+    }
+  pageProperties: >
+    {
+        "Period": {
+            "type": "date",
+            "date": {
+                "start": "{{.Date}}",
+                "end": "{{.DateEnd}}"
+            }
+        },
+        "Name": {
+            "type": "title",
+            "title": [
+                {
+                    "type": "text",
+                    "text": {
+                        "content": "{{.Title}}"
+                    }
+                }
+            ]
+        }
+    }

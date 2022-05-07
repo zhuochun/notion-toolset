@@ -1,0 +1,86 @@
+name: daily-jobs
+# Controls when the action will run.
+on:
+  # Run the daily job every day at midnight UTC
+  schedule:
+    - cron: '0 0 * * *'
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+jobs:
+  flashback-resource:
+    # The type of runner that the job will run on
+    runs-on: ubuntu-latest
+
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v2
+
+      # Setup a Go environment and add it to the PATH
+      - name: Setup Go environment
+        uses: actions/setup-go@v3
+        with:
+          go-version: '1.16.5'
+
+      # Build all the go app
+      - name: Build Go app
+        run: go build
+
+      # Run the go app
+      - name: Run Go app
+        run: ./notion-workflow --config=configs/flashback-resource.yaml --cmd=flashback
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+
+  flashback-learning:
+    # The type of runner that the job will run on
+    runs-on: ubuntu-latest
+
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v2
+
+      # Setup a Go environment and add it to the PATH
+      - name: Setup Go environment
+        uses: actions/setup-go@v3
+        with:
+          go-version: '1.16.5'
+
+      # Build all the go app
+      - name: Build Go app
+        run: go build
+
+      # Run the go app
+      - name: Run Go app
+        run: ./notion-workflow --config=configs/flashback-learning.yaml --cmd=flashback
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+
+  grow-knowledge-tree:
+    # The type of runner that the job will run on
+    runs-on: ubuntu-latest
+
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v2
+
+      # Setup a Go environment and add it to the PATH
+      - name: Setup Go environment
+        uses: actions/setup-go@v3
+        with:
+          go-version: '1.16.5'
+
+      # Build all the go app
+      - name: Build Go app
+        run: go build
+
+      # Run the go app
+      - name: Grow Knowledge Tree
+        run: ./notion-workflow --config=configs/knowledge-tree.yaml --cmd=collector
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}

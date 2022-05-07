@@ -1,0 +1,36 @@
+collector:
+  databaseID: aaaabbbbccccddddeeee # Specify your databaseID
+  databaseQuery: > # To filter your pages
+    {
+        "filter": {
+            "and": [
+                {
+                    "property": "Meta",
+                    "multi_select": {
+                        "is_not_empty": true
+                    }
+                }
+            ]
+        }
+    }
+  collectionIDs: # To remove collected items from this block, Optional
+    - aaaabbbbccccddddeeee
+  collectDumpID: aaaabbbbccccddddeeee # Write to BlockID
+  collectDumpBlock: >
+    {
+        "object": "block",
+        "type": "paragraph",
+        "paragraph": {
+            "text": [
+                {
+                    "type": "mention",
+                    "mention": {
+                        "type": "page",
+                        "page": {
+                            "id": "{{.PageID}}"
+                        }
+                    }
+                }
+            ]
+        }
+    }
