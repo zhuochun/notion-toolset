@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"sort"
 	"unicode/utf8"
 
 	"github.com/dstotijn/go-notion"
@@ -15,14 +16,23 @@ import (
 type ClusterConfig struct {
 	DatabaseID             string `yaml:"databaseID"`
 	DatabaseQuery          string `yaml:"databaseQuery"`
+	MinClusterNodes        int    `yaml:"minClusterNodes"` // optional, default=3
+	ClusterNums            int    `yaml:"clusterNums"`     // optional
 	CollectDumpID          string `yaml:"collectDumpID"`
 	CollectDumpBlockToggle string `yaml:"collectDumpBlockToggle"`
 	CollectDumpBlock       string `yaml:"collectDumpBlock"`
 }
 
 type clusterTable struct {
+	key   string
 	pages []notion.Page
 }
+
+type clusterList []*clusterTable
+
+func (a clusterList) Len() int           { return len(a) }
+func (a clusterList) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a clusterList) Less(i, j int) bool { return len(a[i].pages) > len(a[j].pages) }
 
 type Cluster struct {
 	DebugMode bool
@@ -55,6 +65,11 @@ func (c *Cluster) Run() error {
 
 			dedup := map[string]struct{}{}
 			for _, word := range words {
+				// remove 1 character word
+				if utf8.RuneCount([]byte(word)) <= 1 {
+					continue
+				}
+				// remove duplicated words in title
 				if _, ok := dedup[word]; ok {
 					continue
 				} else {
@@ -65,6 +80,7 @@ func (c *Cluster) Run() error {
 					v.pages = append(v.pages, page)
 				} else {
 					clusters[word] = &clusterTable{
+						key:   word,
 						pages: []notion.Page{page},
 					}
 				}
@@ -83,7 +99,17 @@ func (c *Cluster) Run() error {
 	default:
 	}
 
-	if _, err := c.WriteClusters(pageNum, clusters); err != nil {
+	if len(clusters) == 0 {
+		return nil
+	}
+
+	if c.MinClusterNodes == 0 {
+		c.MinClusterNodes = 3
+	}
+
+	topClusters := c.TopClusters(clusters)
+
+	if _, err := c.WriteClusters(topClusters); err != nil {
 		log.Printf("Write errored. err: %v", err)
 	}
 	return nil
@@ -104,27 +130,49 @@ func (c *Cluster) ScanPages() (chan []notion.Page, chan error) {
 	return q.Go(context.TODO(), 3)
 }
 
-func (c *Cluster) WriteClusters(total int, clusters map[string]*clusterTable) (notion.BlockChildrenResponse, error) {
-	lower_bound := 20
-	upper_bound := 90
-	log.Printf("Filter cluster: [%v, %v]", lower_bound, upper_bound)
+func (c *Cluster) TopClusters(clusters map[string]*clusterTable) []*clusterTable {
+	totalPages := 0
+	sortedClusters := make(clusterList, 0, len(clusters)) // TODO max heap
 
-	for w, cluster := range clusters {
-		if utf8.RuneCount([]byte(w)) < 1 {
-			continue
+	for _, cluster := range clusters {
+		if len(cluster.pages) < c.MinClusterNodes {
+			continue // skip mini clusters
 		}
 
-		if len(cluster.pages) < lower_bound || len(cluster.pages) > upper_bound {
-			continue
-		}
+		totalPages += len(cluster.pages)
+		sortedClusters = append(sortedClusters, cluster)
+	}
 
+	sort.Sort(sortedClusters)
+
+	clusterNums := c.ClusterNums
+	// make an assumption based on 80/20 rule, the top 20% of the clusters are actual clusters
+	estClusterNums := len(sortedClusters) / 5
+	// set the defaults
+	if clusterNums == 0 {
+		clusterNums = estClusterNums
+	}
+	// make sure the cluster nums are reasonable
+	if len(sortedClusters) < 10 || clusterNums > len(sortedClusters) {
+		clusterNums = len(sortedClusters)
+	}
+
+	// TODO fine tune the cluster nums?
+	avgPages := totalPages / len(sortedClusters)
+
+	log.Printf("Num of clusters: %v. Est clusters: %v, Avg clusters nodes: %v", clusterNums, estClusterNums, avgPages)
+	return sortedClusters[0:clusterNums]
+}
+
+func (c *Cluster) WriteClusters(clusters []*clusterTable) (notion.BlockChildrenResponse, error) {
+	for _, cluster := range clusters {
 		if c.DebugMode {
-			log.Printf("Write cluster: %v, pages: %v", w, len(cluster.pages))
+			log.Printf("Write cluster: %v, pages: %v", cluster.key, len(cluster.pages))
 		}
 
 		// create Toggle
 		toggleData, err := Tmpl("ClusterBlockToggle", c.CollectDumpBlockToggle, ToggleBuilder{
-			Title: w,
+			Title: fmt.Sprintf("%v (%v)", cluster.key, len(cluster.pages)),
 		})
 		if err != nil {
 			return notion.BlockChildrenResponse{}, err
@@ -136,7 +184,7 @@ func (c *Cluster) WriteClusters(total int, clusters map[string]*clusterTable) (n
 		}
 
 		// create Children
-		for _, page := range cluster.pages {
+		for i, page := range cluster.pages {
 			blockData, err := Tmpl("ClusterBlock", c.CollectDumpBlock, BlockBuilder{
 				PageID: page.ID,
 			})
@@ -150,6 +198,10 @@ func (c *Cluster) WriteClusters(total int, clusters map[string]*clusterTable) (n
 			}
 
 			toggleBlock.Toggle.Children = append(toggleBlock.Toggle.Children, block)
+
+			if i == 99 { // maximum 100 children in a request
+				break
+			}
 		}
 
 		if resp, err := c.Client.AppendBlockChildren(context.TODO(), c.CollectDumpID, []notion.Block{toggleBlock}); err != nil {

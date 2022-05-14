@@ -27,5 +27,5 @@ Build with [dstotijn/go-notion](https://pkg.go.dev/github.com/dstotijn/go-notion
 - `--cmd=duplicate`: Find duplicated titles in a database and write them to a block
 - `--cmd=flashback`: Resurface some random pages in a database and write them to a block
 - `--cmd=collector`: Collect a set of pages and write them to a block
-- `--cmd=cluster`: Cluster pages in a database by their titles (basic)
+- `--cmd=cluster`: Cluster pages in a database by their titles (simple word cluster)
 - `--cmd=export`: Export pages in a database to markdown files (text content only)
