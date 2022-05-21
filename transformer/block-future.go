@@ -14,7 +14,8 @@ type BlockFuture struct {
 func NewBlockFuture(blockID string) *BlockFuture {
 	return &BlockFuture{
 		BlockID: blockID,
-		done:    make(chan struct{}, 1),
+
+		done: make(chan struct{}),
 	}
 }
 
@@ -22,7 +23,6 @@ func (f *BlockFuture) Write(b []notion.Block, err error) {
 	f.cached = b
 	f.err = err
 
-	f.done <- struct{}{}
 	close(f.done)
 }
 
