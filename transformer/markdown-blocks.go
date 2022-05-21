@@ -267,7 +267,7 @@ func markdownCode(env *markdownEnv, block notion.Block) {
 		env.b.WriteString(text.PlainText)
 	}
 
-	env.b.WriteString("```\n")
+	env.b.WriteString("\n```\n")
 }
 
 func markdownImage(env *markdownEnv, block notion.Block) {
