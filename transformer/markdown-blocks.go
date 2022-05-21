@@ -25,19 +25,20 @@ var markdownBlockMapper = map[notion.BlockType]markdownBlockWriter{
 	//notion.BlockTypeEmbed            BlockType = "embed"
 	//notion.BlockTypeImage            BlockType = "image"
 	//notion.BlockTypeVideo            BlockType = "video"
+	notion.BlockTypeVideo: markdownVideo,
 	//notion.BlockTypeFile             BlockType = "file"
 	//notion.BlockTypePDF              BlockType = "pdf"
 	notion.BlockTypeBookmark: markdownBookmark,
-	//notion.BlockTypeEquation         BlockType = "equation"
-	notion.BlockTypeDivider: markdownDivider,
+	notion.BlockTypeEquation: markdownEquation,
+	notion.BlockTypeDivider:  markdownDivider,
 	//notion.BlockTypeTableOfContents  BlockType = "table_of_contents"
 	//notion.BlockTypeBreadCrumb       BlockType = "breadcrumb"
-	notion.BlockTypeColumnList: markdownColumnList,
-	notion.BlockTypeColumn:     markdownColumn,
-	notion.BlockTypeTable:      markdownTable,
-	//notion.BlockTypeTableRow         BlockType = "table_row"
-	//notion.BlockTypeLinkPreview      BlockType = "link_preview"
-	//notion.BlockTypeLinkToPage       BlockType = "link_to_page"
+	notion.BlockTypeColumnList:  markdownColumnList,
+	notion.BlockTypeColumn:      markdownColumn,
+	notion.BlockTypeTable:       markdownTable,
+	notion.BlockTypeTableRow:    markdownTableRow,
+	notion.BlockTypeLinkPreview: markdownLinkPreview,
+	notion.BlockTypeLinkToPage:  markdownLinkToPage,
 	notion.BlockTypeSyncedBlock: markdownSyncedBlock,
 	//notion.BlockTypeTemplate         BlockType = "template"
 	//notion.BlockTypeUnsupported      BlockType = "unsupported"
@@ -256,13 +257,37 @@ func markdownQuote(env *markdownEnv, block notion.Block) {
 
 func markdownCode(env *markdownEnv, block notion.Block) {
 	env.b.WriteString(env.indent)
-	env.b.WriteString("> ")
+	env.b.WriteString("``` ")
+
+	if block.Code.Language != nil {
+		env.b.WriteString(*block.Code.Language)
+	}
+	env.b.WriteString("\n")
 
 	for _, text := range block.Code.Text {
 		env.b.WriteString(text.PlainText)
 	}
 
-	env.b.WriteString("\n")
+	env.b.WriteString("```\n")
+}
+
+func markdownVideo(env *markdownEnv, block notion.Block) {
+	env.b.WriteString(env.indent)
+	env.b.WriteString("[")
+
+	for _, text := range block.Video.Caption {
+		env.b.WriteString(text.PlainText)
+	}
+
+	env.b.WriteString("](")
+
+	if block.Video.Type == notion.FileTypeExternal {
+		env.b.WriteString(block.Video.External.URL)
+	} else {
+		env.b.WriteString(block.Video.File.URL) // TODO downlaod
+	}
+
+	env.b.WriteString(")\n")
 }
 
 func markdownBookmark(env *markdownEnv, block notion.Block) {
@@ -287,21 +312,40 @@ func markdownBookmark(env *markdownEnv, block notion.Block) {
 	env.b.WriteString("\n")
 }
 
+func markdownEquation(env *markdownEnv, block notion.Block) {
+	env.b.WriteString(env.indent)
+	env.b.WriteString("$$")
+	env.b.WriteString(block.Equation.Expression)
+	env.b.WriteString("$$\n")
+}
+
 func markdownDivider(env *markdownEnv, block notion.Block) {
 	env.b.WriteString(env.indent)
 	env.b.WriteString("---\n")
 }
 
 func markdownColumnList(env *markdownEnv, block notion.Block) {
-	// TODO table and table rows
+	// Empty
 }
 
 func markdownColumn(env *markdownEnv, block notion.Block) {
-	// TODO table and table rows
+	// Empty
 }
 
 func markdownTable(env *markdownEnv, block notion.Block) {
 	// TODO table and table rows
+}
+
+func markdownTableRow(env *markdownEnv, block notion.Block) {
+	// TODO table and table rows
+}
+
+func markdownLinkPreview(env *markdownEnv, block notion.Block) {
+	// TODO
+}
+
+func markdownLinkToPage(env *markdownEnv, block notion.Block) {
+	// TODO
 }
 
 // TODO handle synced block -> create a separate page and use page embed?
