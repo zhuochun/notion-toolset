@@ -23,8 +23,7 @@ var markdownBlockMapper = map[notion.BlockType]markdownBlockWriter{
 	notion.BlockTypeQuote:   markdownQuote,
 	notion.BlockTypeCode:    markdownCode,
 	//notion.BlockTypeEmbed            BlockType = "embed"
-	//notion.BlockTypeImage            BlockType = "image"
-	//notion.BlockTypeVideo            BlockType = "video"
+	notion.BlockTypeImage: markdownImage,
 	notion.BlockTypeVideo: markdownVideo,
 	//notion.BlockTypeFile             BlockType = "file"
 	//notion.BlockTypePDF              BlockType = "pdf"
@@ -54,9 +53,9 @@ func (m *Markdown) transformBlocks(env *markdownEnv, blocks []notion.Block) {
 				continue
 			}
 
-			f := NewBlockFuture(parentID)
-			m.children[parentID] = f
-			m.loaderChan <- f
+			block := NewBlockFuture(parentID)
+			m.children[parentID] = block
+			m.queryChan <- block
 		}
 	}
 
@@ -269,6 +268,35 @@ func markdownCode(env *markdownEnv, block notion.Block) {
 	}
 
 	env.b.WriteString("```\n")
+}
+
+func markdownImage(env *markdownEnv, block notion.Block) {
+	var filename string
+	var err error
+
+	if block.Image.Type == notion.FileTypeExternal {
+		filename = block.Image.External.URL
+	} else {
+		asset := NewAssetFuture(block.ID, block.Image.File.URL)
+		env.m.assetChan <- asset
+
+		filename, err = asset.Read()
+	}
+
+	if err != nil {
+		return
+	}
+
+	env.b.WriteString(env.indent)
+	env.b.WriteString("![")
+
+	for _, text := range block.Image.Caption {
+		env.b.WriteString(text.PlainText)
+	}
+
+	env.b.WriteString("](")
+	env.b.WriteString(filename)
+	env.b.WriteString(")\n")
 }
 
 func markdownVideo(env *markdownEnv, block notion.Block) {

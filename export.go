@@ -4,8 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"os"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -19,8 +22,9 @@ type ExporterConfig struct {
 	DatabaseID    string `yaml:"databaseID"`
 	DatabaseQuery string `yaml:"databaseQuery"`
 	// export related
-	LookbackDays       int      `yaml:"lookbackDays"` // leave this empty for full backup
-	Directory          string   `yaml:"directory"`    // output directory
+	LookbackDays       int      `yaml:"lookbackDays"`   // leave this empty for full backup
+	Directory          string   `yaml:"directory"`      // output directory
+	AssetDirectory     string   `yaml:"assetDirectory"` // output directory for assets (images, etc)
 	UseTitleAsFilename bool     `yaml:"useTitleAsFilename"`
 	ReplaceTitle       []string `yaml:"replaceTitle"`
 	// transformer
@@ -39,8 +43,10 @@ type Exporter struct {
 	ExporterConfig
 
 	queryLimiter *rate.Limiter
-	queryPool    chan *transformer.BlockFuture
+
 	exportPool   chan notion.Page
+	queryPool    chan *transformer.BlockFuture
+	downloadPool chan *transformer.AssetFuture
 }
 
 func (e *Exporter) Run() error {
@@ -49,12 +55,18 @@ func (e *Exporter) Run() error {
 	}
 
 	e.queryLimiter = rate.NewLimiter(rate.Limit(e.ExportSpeed), int(e.ExportSpeed))
-	queryWg := new(sync.WaitGroup)
-	e.queryPool = e.StartWorker(queryWg, int(e.ExportSpeed))
 
+	// workers to write markdowns
 	exportWg := new(sync.WaitGroup)
 	e.exportPool = e.StartExporter(exportWg, int(e.ExportSpeed))
+	// workers to query content of notion blocks
+	queryWg := new(sync.WaitGroup)
+	e.queryPool = e.StartQuerier(queryWg, int(e.ExportSpeed))
+	// workers to download assets
+	downloadWg := new(sync.WaitGroup)
+	e.downloadPool = e.StartDownloader(downloadWg, int(e.ExportSpeed)*2)
 
+	// query database pages, queue each pages for export
 	pagesChan, errChan := e.ScanPages()
 	pageNum := 0
 	for pages := range pagesChan {
@@ -69,7 +81,10 @@ func (e *Exporter) Run() error {
 	}
 	log.Printf("Scanned pages: %v", pageNum)
 
-	close(e.exportPool)
+	close(e.exportPool) // TODO sub-page export cannot close chan here
+	exportWg.Wait()
+
+	close(e.downloadPool)
 	exportWg.Wait()
 
 	close(e.queryPool)
@@ -85,12 +100,15 @@ func (e *Exporter) Run() error {
 
 func (e *Exporter) precheck() error {
 	// check export directory
-	if pathInfo, err := os.Stat(e.Directory); err == nil {
-		if !pathInfo.IsDir() {
-			return fmt.Errorf("directory is invalid: %v", e.Directory)
+	if err := e.precheckDir(e.Directory); err != nil {
+		return err
+	}
+
+	// check asset directory
+	if e.AssetDirectory != "" {
+		if err := e.precheckDir(e.AssetDirectory); err != nil {
+			return err
 		}
-	} else {
-		return fmt.Errorf("directory does not exists: %v", e.Directory)
 	}
 
 	// set default exportspeed
@@ -100,6 +118,18 @@ func (e *Exporter) precheck() error {
 		e.ExportSpeed = 3
 	}
 
+	return nil
+}
+
+func (e *Exporter) precheckDir(dir string) error {
+	pathInfo, err := os.Stat(dir)
+	if err != nil {
+		return fmt.Errorf("directory does not exists: %v. Create it first", e.Directory)
+	}
+
+	if !pathInfo.IsDir() {
+		return fmt.Errorf("directory is invalid: %v", e.Directory)
+	}
 	return nil
 }
 
@@ -127,7 +157,7 @@ func (e *Exporter) ScanPages() (chan []notion.Page, chan error) {
 	return q.Go(context.Background(), 1, e.queryLimiter)
 }
 
-func (e *Exporter) StartWorker(wg *sync.WaitGroup, size int) chan *transformer.BlockFuture {
+func (e *Exporter) StartQuerier(wg *sync.WaitGroup, size int) chan *transformer.BlockFuture {
 	taskPool := make(chan *transformer.BlockFuture, size)
 
 	for i := 0; i < size; i++ {
@@ -135,7 +165,7 @@ func (e *Exporter) StartWorker(wg *sync.WaitGroup, size int) chan *transformer.B
 
 		go func() {
 			for task := range taskPool {
-				blocks, err := e.QueryBlocks(task.BlockID)
+				blocks, err := e.QueryBlocks(task.BlockID) // TODO add retry?
 				task.Write(blocks, err)
 			}
 			wg.Done()
@@ -198,36 +228,11 @@ func (e *Exporter) StartExporter(wg *sync.WaitGroup, size int) chan notion.Page 
 
 		go func() {
 			for page := range taskPool {
-				if e.DebugCache {
-					e.writeDebugCache("page-"+page.ID, page)
-				}
-
-				// get content in the page
-				blocks, err := e.QueryBlocks(page.ID)
-				if err != nil {
-					log.Printf("Failed to query blocks, id: %v, err: %v", page.ID, err)
-					continue
-				}
-
-				filename := e.createFilename(page)
-				// create output file
-				file, err := os.Create(filename)
-				if err != nil {
-					log.Printf("Failed to create new file, name: %v, err: %v", filename, err)
-					continue
-				}
-
-				// transform from block to the file format
-				t := transformer.New(e.Markdown, &page, blocks, e.queryPool)
-				t.TransformOut(file)
-
-				// close file in the loop
-				file.Close()
-
-				if e.DebugMode {
-					log.Printf("Finished exporting one file, name: %v", filename)
+				if err := e.exportPage(page); err != nil {
+					log.Printf("Failed to export: %v", err)
 				}
 			}
+
 			wg.Done()
 		}()
 	}
@@ -235,7 +240,30 @@ func (e *Exporter) StartExporter(wg *sync.WaitGroup, size int) chan notion.Page 
 	return taskPool
 }
 
-func (e *Exporter) createFilename(page notion.Page) string {
+func (e *Exporter) exportPage(page notion.Page) error {
+	if e.DebugCache {
+		e.writeDebugCache("page-"+page.ID, page)
+	}
+
+	blocks, err := e.QueryBlocks(page.ID)
+	if err != nil {
+		return fmt.Errorf("query block id: %v, err: %v", page.ID, err)
+	}
+
+	filename := e.getExportFilename(page)
+	file, err := os.Create(filename)
+	if err != nil {
+		return fmt.Errorf("create file: %v, err: %v", filename, err)
+	}
+	defer file.Close()
+
+	t := transformer.New(e.Markdown, &page, blocks, e.queryPool, e.downloadPool)
+	t.TransformOut(file)
+
+	return nil
+}
+
+func (e *Exporter) getExportFilename(page notion.Page) string {
 	filename := e.Directory + transformer.SimpleID(page.ID) + ".md"
 	// TODO slug the title?
 	if e.UseTitleAsFilename {
@@ -249,4 +277,71 @@ func (e *Exporter) createFilename(page notion.Page) string {
 		}
 	}
 	return filename
+}
+
+func (e *Exporter) StartDownloader(wg *sync.WaitGroup, size int) chan *transformer.AssetFuture {
+	taskPool := make(chan *transformer.AssetFuture, size)
+
+	for i := 0; i < size; i++ {
+		wg.Add(1)
+
+		go func() {
+			for asset := range taskPool {
+				filename, err := e.downloadAsset(asset)
+				asset.Write(filename, err)
+
+				if err != nil {
+					log.Printf("Failed to download: %v", err)
+				}
+			}
+
+			wg.Done()
+		}()
+	}
+
+	return taskPool
+}
+
+var imgExtension = regexp.MustCompile(`\.[png|jpg|jpeg|gif]`)
+
+func (e *Exporter) downloadAsset(asset *transformer.AssetFuture) (string, error) {
+	if e.AssetDirectory == "" {
+		return "", fmt.Errorf("config assetDirectory is empty")
+	}
+
+	if !imgExtension.MatchString(asset.Extension) {
+		return "", fmt.Errorf("unsupported extension: %v", asset.Extension)
+	}
+
+	resp, err := http.Get(asset.URL)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("statusCode: %v, URL: %v", resp.StatusCode, asset.URL)
+	}
+
+	filename := e.getAssetFilename(asset)
+	// skip if the filename already exists, assume downloaded before
+	if _, err := os.Stat(filename); err == nil {
+		return filename, nil
+	}
+
+	file, err := os.Create(filename)
+	if err != nil {
+		return filename, fmt.Errorf("create file, name: %v, err: %v", filename, err)
+	}
+	defer file.Close()
+
+	if _, err := io.Copy(file, resp.Body); err != nil {
+		return filename, fmt.Errorf("write file, URL: %v, err: %v", asset.URL, err)
+	}
+
+	return filename, nil
+}
+
+func (e *Exporter) getAssetFilename(asset *transformer.AssetFuture) string {
+	return e.AssetDirectory + transformer.SimpleID(asset.BlockID) + asset.Extension
 }

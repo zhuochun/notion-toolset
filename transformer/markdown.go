@@ -11,9 +11,10 @@ import (
 type Markdown struct {
 	page       *notion.Page
 	pageBlocks []notion.Block
-
 	children   map[string]*BlockFuture
-	loaderChan chan *BlockFuture
+
+	queryChan chan *BlockFuture
+	assetChan chan *AssetFuture
 
 	config MarkdownConfig
 }
