@@ -124,7 +124,7 @@ func (e *Exporter) ScanPages() (chan []notion.Page, chan error) {
 		log.Printf("DatabaseQuery Sorter: %+v", q.Query.Sorts)
 	}
 
-	return q.Go(context.Background(), 0) // set 0 to block and reduce over burst
+	return q.Go(context.Background(), 1, e.queryLimiter)
 }
 
 func (e *Exporter) StartWorker(wg *sync.WaitGroup, size int) chan *transformer.BlockFuture {

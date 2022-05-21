@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/dstotijn/go-notion"
+	"golang.org/x/time/rate"
 )
 
 type DatabaseQuery struct {
@@ -40,16 +41,19 @@ func (q *DatabaseQuery) SetQuery(queryTmpl string, builder QueryBuilder) error {
 	return nil
 }
 
-func (q *DatabaseQuery) Go(ctx context.Context, speed int) (chan []notion.Page, chan error) {
-	pagesChan := make(chan []notion.Page, speed)
+func (q *DatabaseQuery) Go(ctx context.Context, size int, rateLimiter ...*rate.Limiter) (chan []notion.Page, chan error) {
+	pagesChan := make(chan []notion.Page, size)
 	errChan := make(chan error, 1)
 
 	go func() {
 		cursor := ""
 
 		for {
-			q.Query.StartCursor = cursor
+			if len(rateLimiter) == 1 {
+				rateLimiter[0].Wait(context.Background())
+			}
 
+			q.Query.StartCursor = cursor
 			resp, err := q.Client.QueryDatabase(ctx, q.DatabaseID, q.Query)
 			if err != nil {
 				errChan <- err
