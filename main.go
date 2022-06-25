@@ -19,7 +19,8 @@ const (
 var (
 	flagCmd        = flag.String("cmd", "", "Run command")
 	flagMulti      = flag.Bool("multi", false, "Multiple configs in the config file")
-	flagMultiIdx   = flag.Int("idx", -1, "Use one specific index in the multiple config") // start from index 0
+	flagMultiIdx   = flag.Int("idx", -1, "Use a specific config by index in the multiple config") // start from index 0
+	flagRepeat     = flag.Int("repeat", 1, "Repeat this command")                                 // start with default 1 time
 	flagConfigPath = flag.String("config", "", "Path to config file")
 	flagDebugMode  = flag.Bool("debug", false, "Enable debug mode")
 )
@@ -50,16 +51,27 @@ func main() {
 			log.Printf("MultiConfig len: %v", len(configs))
 		}
 
-		if *flagMultiIdx >= 0 {
-			runCmd(notionClient, configs[*flagMultiIdx])
-		} else {
-			for _, cfg := range configs {
-				runCmd(notionClient, cfg)
+		repeat(func() {
+			if *flagMultiIdx >= 0 {
+				runCmd(notionClient, configs[*flagMultiIdx])
+			} else {
+				for _, cfg := range configs {
+					runCmd(notionClient, cfg)
+				}
 			}
-		}
+		}, *flagRepeat)
 	} else {
 		config := loadConfig(*flagConfigPath)
-		runCmd(notionClient, config)
+
+		repeat(func() {
+			runCmd(notionClient, config)
+		}, *flagRepeat)
+	}
+}
+
+func repeat(do func(), times int) {
+	for i := 0; i < times; i++ {
+		do()
 	}
 }
 

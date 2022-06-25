@@ -38,19 +38,35 @@ func (f *Flashback) Run() error {
 	}
 
 	log.Printf("Lookback %v Hours/%v Day, Queried pages: %+v", lookbackHour, lookbackHour/24, len(pages))
-	if len(pages) <= 0 {
+	if len(pages) < 1 {
 		return fmt.Errorf("skipped. no pages fetched")
 	}
 
-	n := rand.Intn(len(pages))
-	if block, err := f.WriteFlashback(pages[n]); err == nil {
-		if len(block.Results) > 0 {
-			log.Printf("Append block child %v", block.Results[0].ID)
-		}
-		return err
-	} else {
-		return err
+	if f.FlashbackNum < 1 {
+		f.FlashbackNum = 1
+	} else if f.FlashbackNum > len(pages) {
+		f.FlashbackNum = len(pages)
 	}
+
+	skip := map[int]struct{}{}
+	for i := 0; i < f.FlashbackNum; i++ {
+		n := rand.Intn(len(pages))
+		for {
+			if _, found := skip[n]; found {
+				n = (n + 1) % len(pages)
+			} else {
+				skip[n] = struct{}{}
+				break
+			}
+		}
+
+		if block, err := f.WriteFlashback(pages[n]); err == nil {
+			if len(block.Results) > 0 {
+				log.Printf("Append block child %v", block.Results[0].ID)
+			}
+		}
+	}
+	return nil
 }
 
 func (f *Flashback) GetPages(lookback time.Duration) ([]notion.Page, error) {
