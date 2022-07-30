@@ -35,6 +35,7 @@ type markdownEnv struct {
 	prev   *notion.Block
 	parent *notion.Block
 
+	index  int
 	indent string
 }
 

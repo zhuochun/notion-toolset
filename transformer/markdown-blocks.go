@@ -2,12 +2,14 @@ package transformer
 
 import (
 	"log"
+	"strings"
 
 	"github.com/dstotijn/go-notion"
 )
 
 type markdownBlockWriter func(*markdownEnv, notion.Block)
 
+// https://developers.notion.com/reference/block
 var markdownBlockMapper = map[notion.BlockType]markdownBlockWriter{
 	notion.BlockTypeParagraph:        markdownParagraph,
 	notion.BlockTypeHeading1:         markdownHeading1,
@@ -60,14 +62,15 @@ func (m *Markdown) transformBlocks(env *markdownEnv, blocks []notion.Block) {
 	}
 
 	// transform blocks
-	for _, block := range blocks {
+	for i, block := range blocks {
 		writer, ok := markdownBlockMapper[block.Type]
 		if !ok {
 			continue
 		}
 
+		// TODO consider to move special cases to internal parent writer?
 		if env.prev != nil {
-			if block.Type == notion.BlockTypeSyncedBlock {
+			if block.Type == notion.BlockTypeSyncedBlock || block.Type == notion.BlockTypeTableRow {
 				// skip it
 			} else if m.isListType(env.prev.Type) {
 				if !m.isListType(block.Type) {
@@ -78,6 +81,7 @@ func (m *Markdown) transformBlocks(env *markdownEnv, blocks []notion.Block) {
 			}
 		}
 
+		env.index = i
 		writer(env, block)
 
 		if block.HasChildren {
@@ -361,11 +365,31 @@ func markdownColumn(env *markdownEnv, block notion.Block) {
 }
 
 func markdownTable(env *markdownEnv, block notion.Block) {
-	// TODO table and table rows
+	// Empty
 }
 
 func markdownTableRow(env *markdownEnv, block notion.Block) {
-	// TODO table and table rows
+	for _, cells := range block.TableRow.Cells {
+		env.b.WriteString("| ")
+
+		for _, cell := range cells {
+			markdownAnnotation(env, cell, true)
+			env.b.WriteString(strings.ReplaceAll(cell.PlainText, "\n", "<br>"))
+			markdownAnnotation(env, cell, true)
+		}
+
+		env.b.WriteString(" ")
+	}
+
+	env.b.WriteString("|\n")
+
+	if env.index == 0 {
+		for i := 0; i < len(block.TableRow.Cells); i++ {
+			env.b.WriteString("| --- ")
+		}
+
+		env.b.WriteString("|\n")
+	}
 }
 
 func markdownLinkPreview(env *markdownEnv, block notion.Block) {
