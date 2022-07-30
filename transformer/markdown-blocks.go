@@ -110,6 +110,12 @@ func (m *Markdown) transformBlocks(env *markdownEnv, blocks []notion.Block) {
 	}
 }
 
+func markdownRichText(env *markdownEnv, text notion.RichText) {
+	markdownAnnotation(env, text, true)
+	env.b.WriteString(text.PlainText)
+	markdownAnnotation(env, text, false)
+}
+
 func markdownAnnotation(env *markdownEnv, text notion.RichText, prefix bool) {
 	switch {
 	case text.Annotations.Bold:
@@ -146,9 +152,7 @@ func markdownAnnotation(env *markdownEnv, text notion.RichText, prefix bool) {
 
 func markdownParagraph(env *markdownEnv, block notion.Block) {
 	for _, text := range block.Paragraph.Text {
-		markdownAnnotation(env, text, true)
-		env.b.WriteString(text.PlainText)
-		markdownAnnotation(env, text, false)
+		markdownRichText(env, text)
 	}
 	env.b.WriteString("\n")
 }
@@ -184,9 +188,7 @@ func markdownBulletedListItem(env *markdownEnv, block notion.Block) {
 	env.b.WriteString(env.indent)
 	env.b.WriteString("- ")
 	for _, text := range block.BulletedListItem.Text {
-		markdownAnnotation(env, text, true)
-		env.b.WriteString(text.PlainText)
-		markdownAnnotation(env, text, false)
+		markdownRichText(env, text)
 	}
 	env.b.WriteString("\n")
 }
@@ -195,9 +197,7 @@ func markdownNumberedListItem(env *markdownEnv, block notion.Block) {
 	env.b.WriteString(env.indent)
 	env.b.WriteString("0. ")
 	for _, text := range block.NumberedListItem.Text {
-		markdownAnnotation(env, text, true)
-		env.b.WriteString(text.PlainText)
-		markdownAnnotation(env, text, false)
+		markdownRichText(env, text)
 	}
 	env.b.WriteString("\n")
 }
@@ -212,9 +212,7 @@ func markdownToDo(env *markdownEnv, block notion.Block) {
 	}
 
 	for _, text := range block.ToDo.Text {
-		markdownAnnotation(env, text, true)
-		env.b.WriteString(text.PlainText)
-		markdownAnnotation(env, text, false)
+		markdownRichText(env, text)
 	}
 
 	env.b.WriteString("\n")
@@ -224,9 +222,7 @@ func markdownToggle(env *markdownEnv, block notion.Block) {
 	env.b.WriteString(env.indent)
 
 	for _, text := range block.Toggle.Text {
-		markdownAnnotation(env, text, true)
-		env.b.WriteString(text.PlainText)
-		markdownAnnotation(env, text, false)
+		markdownRichText(env, text)
 	}
 
 	env.b.WriteString("\n")
@@ -237,9 +233,7 @@ func markdownCallout(env *markdownEnv, block notion.Block) {
 	env.b.WriteString("> ")
 
 	for _, text := range block.Callout.Text {
-		markdownAnnotation(env, text, true)
-		env.b.WriteString(text.PlainText)
-		markdownAnnotation(env, text, false)
+		markdownRichText(env, text)
 	}
 
 	env.b.WriteString("\n")
@@ -250,9 +244,7 @@ func markdownQuote(env *markdownEnv, block notion.Block) {
 	env.b.WriteString("> ")
 
 	for _, text := range block.Quote.Text {
-		markdownAnnotation(env, text, true)
-		env.b.WriteString(text.PlainText)
-		markdownAnnotation(env, text, false)
+		markdownRichText(env, text)
 	}
 
 	env.b.WriteString("\n")
@@ -375,7 +367,7 @@ func markdownTableRow(env *markdownEnv, block notion.Block) {
 		for _, cell := range cells {
 			markdownAnnotation(env, cell, true)
 			env.b.WriteString(strings.ReplaceAll(cell.PlainText, "\n", "<br>"))
-			markdownAnnotation(env, cell, true)
+			markdownAnnotation(env, cell, false)
 		}
 
 		env.b.WriteString(" ")
