@@ -313,16 +313,6 @@ func (e *Exporter) downloadAsset(asset *transformer.AssetFuture) (string, error)
 		return "", fmt.Errorf("unsupported extension: %v", asset.Extension)
 	}
 
-	resp, err := http.Get(asset.URL)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("statusCode: %v, URL: %v", resp.StatusCode, asset.URL)
-	}
-
 	filename := e.getAssetFilename(asset)
 	// skip if the filename already exists, assume downloaded before
 	if _, err := os.Stat(filename); err == nil {
@@ -334,6 +324,16 @@ func (e *Exporter) downloadAsset(asset *transformer.AssetFuture) (string, error)
 		return filename, fmt.Errorf("create file, name: %v, err: %v", filename, err)
 	}
 	defer file.Close()
+
+	resp, err := http.Get(asset.URL)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("statusCode: %v, URL: %v", resp.StatusCode, asset.URL)
+	}
 
 	if _, err := io.Copy(file, resp.Body); err != nil {
 		return filename, fmt.Errorf("write file, URL: %v, err: %v", asset.URL, err)
