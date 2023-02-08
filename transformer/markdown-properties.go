@@ -235,7 +235,7 @@ func markdownPropRelation(env *markdownEnv, key string, prop notion.DatabasePage
 	for _, r := range prop.Relation {
 		env.b.WriteString(env.indent)
 		env.b.WriteString("- [[")
-		env.b.WriteString(SimpleID(r.ID))
+		env.b.WriteString(SimpleAliasOrID(r.ID, env.aliasMap))
 		env.b.WriteString("]]\n")
 	}
 }

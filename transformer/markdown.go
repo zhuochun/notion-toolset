@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"sync"
 
 	"github.com/dstotijn/go-notion"
 )
@@ -26,6 +27,7 @@ type MarkdownConfig struct {
 	SelectToTags   bool     `yaml:"selectToTags"`
 	FrontMatters   []string `yaml:"frontMatters"`
 	Metadata       []string `yaml:"metadata"`
+	IndexAlias     string   `yaml:"indexAliasPath"`
 }
 
 type markdownEnv struct {
@@ -37,31 +39,42 @@ type markdownEnv struct {
 
 	index  int
 	indent string
+
+	aliasMap sync.Map
 }
 
 func (env *markdownEnv) Copy() *markdownEnv {
 	return &markdownEnv{
-		m:      env.m,
-		b:      env.b,
-		prev:   env.prev,
-		parent: env.parent,
-		indent: env.indent,
+		m:        env.m,
+		b:        env.b,
+		prev:     env.prev,
+		parent:   env.parent,
+		indent:   env.indent,
+		aliasMap: env.aliasMap,
 	}
 }
 
 // TODO handle child pages, can export multiple files
 
+// Transform and return the outcome in plain string, mostly for quick testing
 func (m *Markdown) Transform() string {
 	b := &bytes.Buffer{}
 	m.TransformOut(b)
 	return b.String()
 }
 
+// Transform and write to the stringWriter buffer passed in
 func (m *Markdown) TransformOut(b io.StringWriter) {
 	env := &markdownEnv{
 		m:      m,
 		b:      b,
 		indent: "",
+	}
+
+	// build alias index on the fly
+	// TODO cache in a temp file and read the temp file instead?
+	if len(m.config.IndexAlias) > 0 {
+		env.aliasMap = buildAliasIndex(m.config.IndexAlias)
 	}
 
 	// write page properties as front matters

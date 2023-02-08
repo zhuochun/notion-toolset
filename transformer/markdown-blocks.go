@@ -132,7 +132,7 @@ func markdownAnnotation(env *markdownEnv, text notion.RichText, prefix bool) {
 		// mention write as internal reference [[link|title]]
 		if prefix {
 			env.b.WriteString("[[")
-			env.b.WriteString(SimpleID(text.Mention.Page.ID))
+			env.b.WriteString(SimpleAliasOrID(text.Mention.Page.ID, env.aliasMap))
 			env.b.WriteString("|")
 		} else {
 			env.b.WriteString("]]")
