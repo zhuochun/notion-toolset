@@ -66,10 +66,10 @@ func scanFile(wg *sync.WaitGroup, fileCh chan string, m *sync.Map) {
 		}
 
 		reader := bufio.NewReader(file)
-		counter := 0
+		lineNum := 0
 		for {
 			line, err := reader.ReadString('\n')
-			if err == io.EOF || counter >= 3 { // only read first 3 lines
+			if err == io.EOF || lineNum >= 3 { // only read first 3 lines
 				break
 			}
 			if err != nil {
@@ -84,6 +84,7 @@ func scanFile(wg *sync.WaitGroup, fileCh chan string, m *sync.Map) {
 				m.Store(strings.TrimSpace(aliasID), filename)
 				break
 			}
+			lineNum += 1
 		}
 
 		file.Close()
