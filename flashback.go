@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"math/rand"
@@ -14,11 +14,11 @@ import (
 type FlashbackConfig struct {
 	DatabaseID         string    `yaml:"databaseID"`
 	DatabaseQuery      string    `yaml:"databaseQuery"`
-	OldestTimestamp    time.Time `yaml:"oldestTimestamp"` // in format time.RFC3339 2006-01-02T15:04:05Z07:00
-	FlashbackNum       int       `yaml:"flashbackNum"`    // Number of flashback entries
-	FlashbackPageID    string    `yaml:"flashbackPageID"` // Page to write the flashback
-	FlashbackPageBlock string    `yaml:"flashbackPageBlock"`
-	UserID             string    `yaml:"userID"`
+	OldestTimestamp    time.Time `yaml:"oldestTimestamp"`    // Format time.RFC3339 2006-01-02T15:04:05Z07:00
+	FlashbackNum       int       `yaml:"flashbackNum"`       // Number of flashback entries
+	FlashbackPageID    string    `yaml:"flashbackPageID"`    // Page to write the flashback
+	FlashbackTextBlock string    `yaml:"flashbackTextBlock"` // Format https://pkg.go.dev/github.com/dstotijn/go-notion#ParagraphBlock
+	// FlashbackPageBlock string    `yaml:"flashbackPageBlock"` // DEPRECATED (2023-12) use flashbackTextBlock
 }
 
 type Flashback struct {
@@ -26,6 +26,13 @@ type Flashback struct {
 
 	Client *notion.Client
 	FlashbackConfig
+}
+
+func (f *Flashback) Validate() error {
+	if len(f.FlashbackTextBlock) == 0 {
+		return errors.Join(ErrConfigRequired, fmt.Errorf("set flashbackTextBlock"))
+	}
+	return nil
 }
 
 func (f *Flashback) Run() error {
@@ -60,7 +67,7 @@ func (f *Flashback) Run() error {
 			}
 		}
 
-		if block, err := f.WriteFlashback(pages[n]); err == nil {
+		if block, err := f.WriteBlock(pages[n].ID); err == nil {
 			if len(block.Results) > 0 {
 				log.Printf("Append block child %v", block.Results[0].ID)
 			}
@@ -70,44 +77,31 @@ func (f *Flashback) Run() error {
 }
 
 func (f *Flashback) GetPages(lookback time.Duration) ([]notion.Page, error) {
-	queryData, err := Tmpl("DatabaseQuery", f.DatabaseQuery, QueryBuilder{
-		Date: time.Now().Add(-lookback).Format(layoutDate),
-	})
-	if err != nil {
-		return []notion.Page{}, err
-	}
+	q := NewDatabaseQuery(f.Client, f.DatabaseID)
 
-	query := &notion.DatabaseQuery{}
-	if err := json.Unmarshal(queryData, query); err != nil {
-		return []notion.Page{}, fmt.Errorf("unmarshal DatabaseQuery: %w", err)
+	if err := q.SetQuery(f.DatabaseQuery, QueryBuilder{
+		Date: time.Now().Add(-lookback).Format(layoutDate),
+	}); err != nil {
+		log.Panicf("Invalid query: %v, err: %v", f.DatabaseQuery, err)
 	}
 
 	if f.DebugMode {
-		log.Printf("DatabaseQuery Filter: %+v", query.Filter)
-		log.Printf("DatabaseQuery Sorter: %+v", query.Sorts)
+		log.Printf("DatabaseQuery Filter: %+v", q.Query.Filter)
+		log.Printf("DatabaseQuery Sorter: %+v", q.Query.Sorts)
 	}
 
-	resp, err := f.Client.QueryDatabase(context.TODO(), f.DatabaseID, query)
-	if err != nil {
-		return []notion.Page{}, err
-	}
-
-	return resp.Results, nil
+	return q.One(context.TODO())
 }
 
-func (f *Flashback) WriteFlashback(page notion.Page) (notion.BlockChildrenResponse, error) {
-	blockData, err := Tmpl("FlashbackBlock", f.FlashbackPageBlock, BlockBuilder{
+func (f *Flashback) WriteBlock(pageID string) (notion.BlockChildrenResponse, error) {
+	w := NewAppendBlock(f.Client, f.FlashbackPageID)
+
+	if err := w.SetBlock("Flashback", f.FlashbackTextBlock, BlockBuilder{
 		Date:   time.Now().Format(layoutDate),
-		PageID: page.ID,
-	})
-	if err != nil {
+		PageID: pageID,
+	}); err != nil {
 		return notion.BlockChildrenResponse{}, err
 	}
 
-	block := notion.Block{}
-	if err := json.Unmarshal(blockData, &block); err != nil {
-		return notion.BlockChildrenResponse{}, fmt.Errorf("unmarshal Block: %w", err)
-	}
-
-	return f.Client.AppendBlockChildren(context.TODO(), f.FlashbackPageID, []notion.Block{block})
+	return w.WriteParagraph(context.TODO())
 }

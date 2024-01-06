@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 
@@ -10,11 +10,12 @@ import (
 )
 
 type CollectorConfig struct {
-	DatabaseID       string   `yaml:"databaseID"`
-	DatabaseQuery    string   `yaml:"databaseQuery"`
-	CollectionIDs    []string `yaml:"collectionIDs"`
-	CollectDumpID    string   `yaml:"collectDumpID"`
-	CollectDumpBlock string   `yaml:"collectDumpBlock"`
+	DatabaseID           string   `yaml:"databaseID"`
+	DatabaseQuery        string   `yaml:"databaseQuery"`
+	CollectionIDs        []string `yaml:"collectionIDs"`
+	CollectDumpID        string   `yaml:"collectDumpID"`
+	CollectDumpTextBlock string   `yaml:"collectDumpTextBlock"` // Format https://pkg.go.dev/github.com/dstotijn/go-notion#ParagraphBlock
+	// CollectDumpBlock string   `yaml:"collectDumpBlock"` // DEPRECATED (2023-12) use collectDumpTextBlock
 }
 
 type Collector struct {
@@ -22,6 +23,13 @@ type Collector struct {
 
 	Client *notion.Client
 	CollectorConfig
+}
+
+func (c *Collector) Validate() error {
+	if len(c.CollectDumpTextBlock) == 0 {
+		return errors.Join(ErrConfigRequired, fmt.Errorf("set collectDumpTextBlock"))
+	}
+	return nil
 }
 
 func (c *Collector) Run() error {
@@ -54,7 +62,7 @@ func (c *Collector) Run() error {
 
 	errNum := 0
 	for _, newPageID := range newPages {
-		if _, err := c.WritePageMention(newPageID); err != nil {
+		if _, err := c.WriteBlock(newPageID); err != nil {
 			errNum += 1
 
 			log.Printf("Failed to write block with PageID: %v, err: %v", newPageID, err)
@@ -82,18 +90,19 @@ func (c *Collector) GetCollected() map[string]bool {
 			}
 
 			for _, block := range blocks {
-				if block.HasChildren {
-					nextScanIDs = append(nextScanIDs, block.ID)
+				if block.HasChildren() {
+					nextScanIDs = append(nextScanIDs, block.ID())
 				}
 
-				if block.Type == notion.BlockTypeParagraph {
-					for _, cBlock := range block.Paragraph.Text {
+				switch b := block.(type) {
+				case notion.ParagraphBlock:
+					for _, cBlock := range b.RichText {
 						if cBlock.Mention != nil && cBlock.Mention.Type == notion.MentionTypePage {
 							collected[cBlock.Mention.Page.ID] = true
 						}
 					}
-				} else if block.Type == notion.BlockTypeToggle {
-					for _, cBlock := range block.Toggle.Text {
+				case notion.ToggleBlock:
+					for _, cBlock := range b.RichText {
 						if cBlock.Mention != nil && cBlock.Mention.Type == notion.MentionTypePage {
 							collected[cBlock.Mention.Page.ID] = true
 						}
@@ -151,18 +160,14 @@ func (c *Collector) ScanPages() (chan []notion.Page, chan error) {
 	return q.Go(context.TODO(), 3)
 }
 
-func (c *Collector) WritePageMention(pageID string) (notion.BlockChildrenResponse, error) {
-	blockData, err := Tmpl("CollectorDumpBlock", c.CollectDumpBlock, BlockBuilder{
+func (c *Collector) WriteBlock(pageID string) (notion.BlockChildrenResponse, error) {
+	w := NewAppendBlock(c.Client, c.CollectDumpID)
+
+	if err := w.SetBlock("Collector", c.CollectDumpTextBlock, BlockBuilder{
 		PageID: pageID,
-	})
-	if err != nil {
+	}); err != nil {
 		return notion.BlockChildrenResponse{}, err
 	}
 
-	block := notion.Block{}
-	if err := json.Unmarshal(blockData, &block); err != nil {
-		return notion.BlockChildrenResponse{}, fmt.Errorf("unmarshal Block: %w", err)
-	}
-
-	return c.Client.AppendBlockChildren(context.TODO(), c.CollectDumpID, []notion.Block{block})
+	return w.WriteParagraph(context.TODO())
 }

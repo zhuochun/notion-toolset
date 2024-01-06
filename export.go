@@ -49,11 +49,42 @@ type Exporter struct {
 	downloadPool chan *transformer.AssetFuture
 }
 
-func (e *Exporter) Run() error {
-	if err := e.precheck(); err != nil {
+func (e *Exporter) Validate() error {
+	// check export directory
+	if err := e.precheckDir(e.Directory); err != nil {
 		return err
 	}
 
+	// check asset directory
+	if e.AssetDirectory != "" {
+		if err := e.precheckDir(e.AssetDirectory); err != nil {
+			return err
+		}
+	}
+
+	// set default exportspeed
+	if e.ExportSpeed < 1 {
+		e.ExportSpeed = 2.8
+	} else if e.ExportSpeed > 3 {
+		e.ExportSpeed = 3
+	}
+
+	return nil
+}
+
+func (e *Exporter) precheckDir(dir string) error {
+	pathInfo, err := os.Stat(dir)
+	if err != nil {
+		return fmt.Errorf("directory does not exists: %v. Create it first", dir)
+	}
+
+	if !pathInfo.IsDir() {
+		return fmt.Errorf("directory is invalid: %v", dir)
+	}
+	return nil
+}
+
+func (e *Exporter) Run() error {
 	e.queryLimiter = rate.NewLimiter(rate.Limit(e.ExportSpeed), int(e.ExportSpeed))
 
 	// workers to write markdowns
@@ -96,41 +127,6 @@ func (e *Exporter) Run() error {
 	default:
 		return nil
 	}
-}
-
-func (e *Exporter) precheck() error {
-	// check export directory
-	if err := e.precheckDir(e.Directory); err != nil {
-		return err
-	}
-
-	// check asset directory
-	if e.AssetDirectory != "" {
-		if err := e.precheckDir(e.AssetDirectory); err != nil {
-			return err
-		}
-	}
-
-	// set default exportspeed
-	if e.ExportSpeed < 1 {
-		e.ExportSpeed = 2.8
-	} else if e.ExportSpeed > 3 {
-		e.ExportSpeed = 3
-	}
-
-	return nil
-}
-
-func (e *Exporter) precheckDir(dir string) error {
-	pathInfo, err := os.Stat(dir)
-	if err != nil {
-		return fmt.Errorf("directory does not exists: %v. Create it first", dir)
-	}
-
-	if !pathInfo.IsDir() {
-		return fmt.Errorf("directory is invalid: %v", dir)
-	}
-	return nil
 }
 
 func (e *Exporter) ScanPages() (chan []notion.Page, chan error) {

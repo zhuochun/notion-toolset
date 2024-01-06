@@ -2,7 +2,6 @@ package main
 
 import (
 	"flag"
-	"io/ioutil"
 	"log"
 	"math/rand"
 	"os"
@@ -36,6 +35,9 @@ type Config struct {
 }
 
 type Cmd interface {
+	// Validate check the config are correct
+	Validate() error
+	// Run the cmd
 	Run() error
 }
 
@@ -84,43 +86,37 @@ func runCmd(notionClient *notion.Client, cfg Config) {
 
 	var cmd Cmd
 	switch *flagCmd {
-	case "flashback":
-		cmd = &Flashback{
-			DebugMode:       *flagDebugMode,
-			Client:          notionClient,
-			FlashbackConfig: cfg.Flashback,
-		}
-	case "daily-journal":
+	case "daily-journal": // create daily journal entries with title YYYY-MM-DD
 		cmd = &DailyJournal{
 			DebugMode:          *flagDebugMode,
 			Client:             notionClient,
 			DailyJournalConfig: cfg.DailyJournal,
 		}
-	case "weekly-journal":
+	case "weekly-journal": // create weekly journal entries with title like YYYY-MM-DD/YYYY-MM-DD
 		cmd = &WeeklyJournal{
 			DebugMode:           *flagDebugMode,
 			Client:              notionClient,
 			WeeklyJournalConfig: cfg.WeeklyJournal,
 		}
-	case "duplicate":
+	case "flashback": // get a random page from a database and resurface it
+		cmd = &Flashback{
+			DebugMode:       *flagDebugMode,
+			Client:          notionClient,
+			FlashbackConfig: cfg.Flashback,
+		}
+	case "duplicate": // find duplicated pages (same title) in a database
 		cmd = &DuplicateChecker{
 			DebugMode:              *flagDebugMode,
 			Client:                 notionClient,
 			DuplicateCheckerConfig: cfg.DuplicateChecker,
 		}
-	case "collector":
+	case "collector": // find certain pages from a database and dump the delta pages in a page
 		cmd = &Collector{
 			DebugMode:       *flagDebugMode,
 			Client:          notionClient,
 			CollectorConfig: cfg.Collector,
 		}
-	case "cluster":
-		cmd = &Cluster{
-			DebugMode:     *flagDebugMode,
-			Client:        notionClient,
-			ClusterConfig: cfg.Cluster,
-		}
-	case "export":
+	case "export": // export pages from a database into local folders in markdown
 		cmd = &Exporter{
 			DebugMode:      *flagDebugMode,
 			Client:         notionClient,
@@ -128,6 +124,10 @@ func runCmd(notionClient *notion.Client, cfg Config) {
 		}
 	default:
 		log.Fatalf("Unknown cmd: `%v`", *flagCmd)
+	}
+
+	if err := cmd.Validate(); err != nil {
+		log.Fatalf("cmd %v validate failed: %+v", *flagCmd, err)
 	}
 
 	if err := cmd.Run(); err != nil {
@@ -148,7 +148,7 @@ func newNotionClient() *notion.Client {
 }
 
 func loadConfig(configPath string) Config {
-	configFile, err := ioutil.ReadFile(configPath)
+	configFile, err := os.ReadFile(configPath)
 	if err != nil {
 		log.Printf("Error in Config File (%v): %v", configPath, err)
 		os.Exit(2)
@@ -165,7 +165,7 @@ func loadConfig(configPath string) Config {
 }
 
 func loadMultiConfig(configPath string) []Config {
-	configFile, err := ioutil.ReadFile(configPath)
+	configFile, err := os.ReadFile(configPath)
 	if err != nil {
 		log.Printf("Error in Config File (%v): %v", configPath, err)
 		os.Exit(2)

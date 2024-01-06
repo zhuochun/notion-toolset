@@ -2,21 +2,22 @@ package main
 
 import (
 	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/dstotijn/go-notion"
 	"github.com/zhuochun/notion-toolset/transformer"
 )
 
 type DuplicateCheckerConfig struct {
-	DatabaseID         string   `yaml:"databaseID"`
-	DatabaseQuery      string   `yaml:"databaseQuery"`
-	RecordBlockID      string   `yaml:"recordBlockID"`
-	Properties         []string `yaml:"properties"`
-	DuplicateDumpID    string   `yaml:"duplicateDumpID"`
-	DuplicateDumpBlock string   `yaml:"duplicateDumpBlock"`
+	DatabaseID             string   `yaml:"databaseID"`
+	DatabaseQuery          string   `yaml:"databaseQuery"`
+	CheckProperties        []string `yaml:"checkProperties"` // TODO Check by specific properties
+	DuplicateDumpID        string   `yaml:"duplicateDumpID"`
+	DuplicateDumpTextBlock string   `yaml:"duplicateDumpTextBlock"` // Format https://pkg.go.dev/github.com/dstotijn/go-notion#ParagraphBlock
+	// DuplicateDumpBlock string   `yaml:"duplicateDumpBlock"` // DEPRECATED (2023-12) use duplicateDumpTextBlock
 }
 
 type DuplicateChecker struct {
@@ -24,6 +25,13 @@ type DuplicateChecker struct {
 
 	Client *notion.Client
 	DuplicateCheckerConfig
+}
+
+func (d *DuplicateChecker) Validate() error {
+	if len(d.DuplicateDumpTextBlock) == 0 {
+		return errors.Join(ErrConfigRequired, fmt.Errorf("set duplicateDumpTextBlock"))
+	}
+	return nil
 }
 
 func (d *DuplicateChecker) Run() error {
@@ -41,8 +49,8 @@ func (d *DuplicateChecker) Run() error {
 			}
 
 			if id, ok := set[title]; ok {
-				d.WritePageMention(page.ID) // TODO make this one-liner
-				d.WritePageMention(id)
+				d.WriteBlock(page.ID)
+				d.WriteBlock(id)
 			} else {
 				set[title] = page.ID
 			}
@@ -77,18 +85,15 @@ func (d *DuplicateChecker) ScanPages() (chan []notion.Page, chan error) {
 	return q.Go(context.TODO(), 3)
 }
 
-func (d *DuplicateChecker) WritePageMention(pageID string) (notion.BlockChildrenResponse, error) {
-	blockData, err := Tmpl("DuplicateDumpBlock", d.DuplicateDumpBlock, BlockBuilder{
+func (d *DuplicateChecker) WriteBlock(pageID string) (notion.BlockChildrenResponse, error) {
+	w := NewAppendBlock(d.Client, d.DuplicateDumpID)
+
+	if err := w.SetBlock("Duplicate", d.DuplicateDumpTextBlock, BlockBuilder{
+		Date:   time.Now().Format(layoutDate),
 		PageID: pageID,
-	})
-	if err != nil {
+	}); err != nil {
 		return notion.BlockChildrenResponse{}, err
 	}
 
-	block := notion.Block{}
-	if err := json.Unmarshal(blockData, &block); err != nil {
-		return notion.BlockChildrenResponse{}, fmt.Errorf("unmarshal Block: %w", err)
-	}
-
-	return d.Client.AppendBlockChildren(context.TODO(), d.DuplicateDumpID, []notion.Block{block})
+	return w.WriteParagraph(context.TODO())
 }
