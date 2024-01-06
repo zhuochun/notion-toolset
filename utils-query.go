@@ -78,3 +78,11 @@ func (q *DatabaseQuery) Go(ctx context.Context, size int, rateLimiter ...*rate.L
 
 	return pagesChan, errChan
 }
+
+func (q *DatabaseQuery) One(ctx context.Context) ([]notion.Page, error) {
+	resp, err := q.Client.QueryDatabase(ctx, q.DatabaseID, q.Query)
+	if err != nil {
+		return []notion.Page{}, err
+	}
+	return resp.Results, nil
+}
