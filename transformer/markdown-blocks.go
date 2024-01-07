@@ -1,7 +1,6 @@
 package transformer
 
 import (
-	"fmt"
 	"log"
 	"strings"
 
@@ -242,7 +241,7 @@ func (m *Markdown) markdownBulletedListItem(env *markdownEnv, block *notion.Bull
 func (m *Markdown) markdownNumberedListItem(env *markdownEnv, block *notion.NumberedListItemBlock) {
 	env.b.WriteString(env.indent)
 
-	env.b.WriteString(fmt.Sprintf("%d. ", env.index+1))
+	env.b.WriteString("0. ") // env.index+1 doesn't work, need a local index
 	for _, text := range block.RichText {
 		m.markdownRichText(env, text)
 	}
