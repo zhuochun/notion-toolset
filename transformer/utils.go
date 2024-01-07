@@ -12,7 +12,7 @@ func SimpleID(id string) string {
 	return strings.ReplaceAll(id, "-", "")
 }
 
-func SimpleAliasOrID(id string, aliasMap sync.Map) string {
+func SimpleAliasOrID(id string, aliasMap *sync.Map) string {
 	id = SimpleID(id)
 
 	if v, found := aliasMap.Load(id); found {
@@ -49,14 +49,4 @@ func concatRichText(blocks []notion.RichText) string {
 		title += blocks[i].PlainText
 	}
 	return title
-}
-
-func GetParentID(block notion.Block) string {
-	if block.Type == notion.BlockTypeSyncedBlock && block.SyncedBlock.SyncedFrom != nil {
-		if block.SyncedBlock.SyncedFrom.Type == notion.SyncedFromTypeBlockID {
-			return block.SyncedBlock.SyncedFrom.BlockID
-		}
-	}
-
-	return block.ID
 }

@@ -69,7 +69,7 @@ func (f *Flashback) Run() error {
 
 		if block, err := f.WriteBlock(pages[n].ID); err == nil {
 			if len(block.Results) > 0 {
-				log.Printf("Append block child %v", block.Results[0].ID)
+				log.Printf("Append block child %v", block.Results[0].ID())
 			}
 		}
 	}

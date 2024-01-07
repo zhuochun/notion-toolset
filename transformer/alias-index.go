@@ -18,17 +18,21 @@ const (
 )
 
 // return a map of string key=alias -> string value=filename
-func buildAliasIndex(rootPath string) sync.Map {
-	m := sync.Map{}
-	fileCh := make(chan string, indexerNum)
+func buildAliasIndex(rootPath string) *sync.Map {
+	m := &sync.Map{}
+	if len(rootPath) == 0 {
+		return m
+	}
 
+	fileCh := make(chan string, indexerNum)
 	var wg sync.WaitGroup
+	// read file content alias
 	for i := 0; i < indexerNum; i++ {
 		wg.Add(1)
 
-		go scanFile(&wg, fileCh, &m)
+		go scanFile(&wg, fileCh, m)
 	}
-
+	// walk recursively from the root path
 	err := filepath.Walk(rootPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
