@@ -160,6 +160,8 @@ func (m *Markdown) markdownPlainChildren(env *markdownEnv, block notion.Block) {
 }
 
 func (m *Markdown) markdownParagraph(env *markdownEnv, block *notion.ParagraphBlock) {
+	env.b.WriteString(env.indent)
+
 	for _, text := range block.RichText {
 		m.markdownRichText(env, text)
 	}
@@ -170,6 +172,7 @@ func (m *Markdown) markdownParagraph(env *markdownEnv, block *notion.ParagraphBl
 
 func (m *Markdown) markdownHeading1(env *markdownEnv, block *notion.Heading1Block) {
 	env.b.WriteString(env.indent)
+
 	env.b.WriteString("## ")
 	for _, text := range block.RichText {
 		env.b.WriteString(text.PlainText)
@@ -181,6 +184,7 @@ func (m *Markdown) markdownHeading1(env *markdownEnv, block *notion.Heading1Bloc
 
 func (m *Markdown) markdownHeading2(env *markdownEnv, block *notion.Heading2Block) {
 	env.b.WriteString(env.indent)
+
 	env.b.WriteString("### ")
 	for _, text := range block.RichText {
 		env.b.WriteString(text.PlainText)
@@ -192,6 +196,7 @@ func (m *Markdown) markdownHeading2(env *markdownEnv, block *notion.Heading2Bloc
 
 func (m *Markdown) markdownHeading3(env *markdownEnv, block *notion.Heading3Block) {
 	env.b.WriteString(env.indent)
+
 	env.b.WriteString("#### ")
 	for _, text := range block.RichText {
 		env.b.WriteString(text.PlainText)
@@ -450,16 +455,40 @@ func (m *Markdown) markdownLinkToPage(env *markdownEnv, block *notion.LinkToPage
 // https://help.obsidian.md/Linking+notes+and+files/Internal+links
 func (m *Markdown) markdownSyncedBlock(env *markdownEnv, block *notion.SyncedBlock) {
 	if block.SyncedFrom != nil { // TODO handle synced from
-		env.b.WriteString("[[^")
-		env.b.WriteString(block.SyncedFrom.BlockID)
-		env.b.WriteString("]]\n\n")
-
+		m.markdownSyncedFromBlock(env, block)
 		return
 	}
 
+	env.b.WriteString(env.indent)
+	env.b.WriteString("<sync ID=\"")
+	env.b.WriteString(block.ID())
+	env.b.WriteString("\">\n\n")
+
 	m.markdownPlainChildren(env, block)
 
-	env.b.WriteString("^")
-	env.b.WriteString(block.ID())
-	env.b.WriteString("\n\n")
+	env.b.WriteString(env.indent)
+	env.b.WriteString("</sync>\n\n")
+}
+
+func (m *Markdown) markdownSyncedFromBlock(env *markdownEnv, block *notion.SyncedBlock) {
+	m.loadChildren(block.SyncedFrom.BlockID)
+
+	blocks, err := m.getChildren(block.SyncedFrom.BlockID)
+	if err != nil {
+		log.Printf("Error fetch children of id: %v, page: %+v, err: %v", block.ID(), block.Parent(), err)
+	}
+
+	newEnv := env.Copy()
+	newEnv.prev = block
+	newEnv.parent = block
+
+	env.b.WriteString(env.indent)
+	env.b.WriteString("<sync sourceID=\"")
+	env.b.WriteString(block.SyncedFrom.BlockID)
+	env.b.WriteString("\">\n\n")
+
+	m.transformBlocks(newEnv, blocks)
+
+	env.b.WriteString(env.indent)
+	env.b.WriteString("</sync>\n\n")
 }
