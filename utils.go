@@ -65,16 +65,17 @@ func (a *AppendBlock) SetBlock(name, s string, builder interface{}) error {
 
 	block, err := Tmpl(name, s, builder)
 	if err != nil {
-		a.Block = block
+		return err
 	}
-	return err
+	a.Block = block
+	return nil
 }
 
 // https://pkg.go.dev/github.com/dstotijn/go-notion#ParagraphBlock
 // https://pkg.go.dev/github.com/dstotijn/go-notion#RichText
 func (a *AppendBlock) WriteParagraph(ctx context.Context) (notion.BlockChildrenResponse, error) {
-	block := notion.ParagraphBlock{}
-	if err := json.Unmarshal(a.Block, &block); err != nil {
+	block := &notion.ParagraphBlock{}
+	if err := json.Unmarshal(a.Block, block); err != nil {
 		return notion.BlockChildrenResponse{}, fmt.Errorf("unmarshal Block: %w", err)
 	}
 
