@@ -18,19 +18,14 @@ collector:
   collectDumpID: aaaabbbbccccddddeeee # Write to BlockID
   collectDumpBlock: >
     {
-        "object": "block",
-        "type": "paragraph",
-        "paragraph": {
-            "text": [
-                {
-                    "type": "mention",
-                    "mention": {
-                        "type": "page",
-                        "page": {
-                            "id": "{{.PageID}}"
-                        }
+        "rich_text": [
+            {
+                "mention": {
+                    "type": "page",
+                    "page": {
+                        "id": "{{.PageID}}"
                     }
                 }
-            ]
-        }
+            }
+        ]
     }

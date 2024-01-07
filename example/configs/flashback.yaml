@@ -24,25 +24,19 @@ flashback:
   flashbackPageID: aaaabbbbccccddddeeee # Write to BlockID
   flashbackPageBlock: >
     {
-        "object": "block",
-        "type": "paragraph",
-        "paragraph": {
-            "text": [
-                {
-                    "type": "text",
-                    "text": {
-                        "content": "{{.Date}} "
-                    }
-                },
-                {
-                    "type": "mention",
-                    "mention": {
-                        "type": "page",
-                        "page": {
-                            "id": "{{.PageID}}"
-                        }
+        "rich_text": [
+            {
+                "text": {
+                    "content": "{{.Date}} "
+                }
+            },
+            {
+                "mention": {
+                    "type": "page",
+                    "page": {
+                        "id": "{{.PageID}}"
                     }
                 }
-            ]
-        }
+            }
+        ]
     }
