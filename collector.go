@@ -95,13 +95,13 @@ func (c *Collector) GetCollected() map[string]bool {
 				}
 
 				switch b := block.(type) {
-				case notion.ParagraphBlock:
+				case *notion.ParagraphBlock:
 					for _, cBlock := range b.RichText {
 						if cBlock.Mention != nil && cBlock.Mention.Type == notion.MentionTypePage {
 							collected[cBlock.Mention.Page.ID] = true
 						}
 					}
-				case notion.ToggleBlock:
+				case *notion.ToggleBlock:
 					for _, cBlock := range b.RichText {
 						if cBlock.Mention != nil && cBlock.Mention.Type == notion.MentionTypePage {
 							collected[cBlock.Mention.Page.ID] = true
