@@ -11,8 +11,28 @@ import (
 )
 
 type QueryBuilder struct {
-	Date string
+	Date  string
+	Title string
 }
+
+const tmplQueryDBbyTitle = `
+{
+	"filter": {
+		"and": [
+			{
+				"property": "title",
+				"rich_text": { "equals": "{{.Title}}" }
+			}
+		]
+	},
+	"sorts": [
+		{
+			"timestamp": "created_time",
+			"direction": "ascending"
+		}
+	]
+}
+`
 
 type PageBuilder struct {
 	Title      string
