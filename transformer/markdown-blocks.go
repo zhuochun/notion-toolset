@@ -1,122 +1,111 @@
 package transformer
 
 import (
+	"fmt"
 	"log"
 	"strings"
 
 	"github.com/dstotijn/go-notion"
 )
 
-type markdownBlockWriter func(*markdownEnv, notion.Block)
+func (m *Markdown) transformBlocks(env *markdownEnv, blocks []notion.Block) {
+	for i, block := range blocks {
+		env.index = i
+
+		if i-1 >= 0 {
+			env.prev = blocks[i-1]
+		}
+		if i+1 < len(blocks) {
+			env.next = blocks[i+1]
+		}
+
+		m.transformBlock(env, block)
+	}
+}
 
 // https://developers.notion.com/reference/block
-var markdownBlockMapper = map[notion.BlockType]markdownBlockWriter{
-	notion.BlockTypeParagraph:        markdownParagraph,
-	notion.BlockTypeHeading1:         markdownHeading1,
-	notion.BlockTypeHeading2:         markdownHeading2,
-	notion.BlockTypeHeading3:         markdownHeading3,
-	notion.BlockTypeBulletedListItem: markdownBulletedListItem,
-	notion.BlockTypeNumberedListItem: markdownNumberedListItem,
-	notion.BlockTypeToDo:             markdownToDo,
-	notion.BlockTypeToggle:           markdownToggle,
-	//notion.BlockTypeChildPage        BlockType = "child_page"
-	//notion.BlockTypeChildDatabase    BlockType = "child_database"
-	notion.BlockTypeCallout: markdownCallout,
-	notion.BlockTypeQuote:   markdownQuote,
-	notion.BlockTypeCode:    markdownCode,
-	//notion.BlockTypeEmbed            BlockType = "embed"
-	notion.BlockTypeImage: markdownImage,
-	notion.BlockTypeVideo: markdownVideo,
-	//notion.BlockTypeFile             BlockType = "file"
-	//notion.BlockTypePDF              BlockType = "pdf"
-	notion.BlockTypeBookmark: markdownBookmark,
-	notion.BlockTypeEquation: markdownEquation,
-	notion.BlockTypeDivider:  markdownDivider,
-	//notion.BlockTypeTableOfContents  BlockType = "table_of_contents"
-	//notion.BlockTypeBreadCrumb       BlockType = "breadcrumb"
-	notion.BlockTypeColumnList:  markdownColumnList,
-	notion.BlockTypeColumn:      markdownColumn,
-	notion.BlockTypeTable:       markdownTable,
-	notion.BlockTypeTableRow:    markdownTableRow,
-	notion.BlockTypeLinkPreview: markdownLinkPreview,
-	notion.BlockTypeLinkToPage:  markdownLinkToPage,
-	notion.BlockTypeSyncedBlock: markdownSyncedBlock,
-	//notion.BlockTypeTemplate         BlockType = "template"
-	//notion.BlockTypeUnsupported      BlockType = "unsupported"
-}
-
-func (m *Markdown) transformBlocks(env *markdownEnv, blocks []notion.Block) {
-	// preload children (have a better place to put this?)
-	for _, block := range blocks {
-		if block.HasChildren {
-			parentID := GetParentID(block)
-			// check whether it is already loaded before
-			if _, ok := m.children[parentID]; ok {
-				continue
-			}
-
-			block := NewBlockFuture(parentID)
-			m.children[parentID] = block
-			m.queryChan <- block
-		}
+func (m *Markdown) transformBlock(env *markdownEnv, block notion.Block) bool {
+	switch b := block.(type) {
+	case *notion.ParagraphBlock:
+		m.markdownParagraph(env, b)
+	case *notion.Heading1Block:
+		m.markdownHeading1(env, b)
+	case *notion.Heading2Block:
+		m.markdownHeading2(env, b)
+	case *notion.Heading3Block:
+		m.markdownHeading3(env, b)
+	case *notion.BulletedListItemBlock:
+		m.markdownBulletedListItem(env, b)
+	case *notion.NumberedListItemBlock:
+		m.markdownNumberedListItem(env, b)
+	case *notion.ToDoBlock:
+		m.markdownToDo(env, b)
+	case *notion.ToggleBlock:
+		m.markdownToggle(env, b)
+	case *notion.ChildPageBlock:
+		return false // TODO
+	case *notion.ChildDatabaseBlock:
+		return false // TODO
+	case *notion.CalloutBlock:
+		m.markdownCallout(env, b)
+	case *notion.QuoteBlock:
+		m.markdownQuote(env, b)
+	case *notion.CodeBlock:
+		m.markdownCode(env, b)
+	case *notion.EmbedBlock:
+		return false // TODO
+	case *notion.ImageBlock:
+		m.markdownImage(env, b)
+	case *notion.AudioBlock:
+		return false // TODO
+	case *notion.VideoBlock:
+		m.markdownVideo(env, b)
+	case *notion.FileBlock:
+		return false // TODO
+	case *notion.PDFBlock:
+		return false // TODO
+	case *notion.BookmarkBlock:
+		m.markdownBookmark(env, b)
+	case *notion.EquationBlock:
+		m.markdownEquation(env, b)
+	case *notion.DividerBlock:
+		m.markdownDivider(env, b)
+	case *notion.TableOfContentsBlock:
+		return false // Skip
+	case *notion.BreadcrumbBlock:
+		return false // Skip
+	case *notion.ColumnListBlock:
+		m.markdownColumnList(env, b)
+	case *notion.ColumnBlock:
+		m.markdownColumn(env, b)
+	case *notion.TableBlock:
+		m.markdownTable(env, b)
+	case *notion.TableRowBlock:
+		m.markdownTableRow(env, b)
+	case *notion.LinkPreviewBlock:
+		m.markdownLinkPreview(env, b)
+	case *notion.LinkToPageBlock:
+		m.markdownLinkToPage(env, b)
+	case *notion.SyncedBlock:
+		m.markdownSyncedBlock(env, b)
+	case *notion.TemplateBlock:
+		return false // TODO
+	case *notion.UnsupportedBlock:
+		return false // TODO
+	default:
+		return false // TODO
 	}
 
-	// transform blocks
-	for i, block := range blocks {
-		writer, ok := markdownBlockMapper[block.Type]
-		if !ok {
-			continue
-		}
-
-		// TODO consider to move special cases to internal parent writer?
-		if env.prev != nil {
-			if block.Type == notion.BlockTypeSyncedBlock || block.Type == notion.BlockTypeTableRow {
-				// skip it
-			} else if m.isListType(env.prev.Type) {
-				if !m.isListType(block.Type) {
-					env.b.WriteString("\n")
-				}
-			} else {
-				env.b.WriteString("\n")
-			}
-		}
-
-		env.index = i
-		writer(env, block)
-
-		if block.HasChildren {
-			nEnv := env.Copy()
-			// update references (TODO special handle for synced block?)
-			nEnv.prev = &block
-			nEnv.parent = &block
-			// indent if the current block is a list item
-			if m.isListType(block.Type) {
-				nEnv.indent = nEnv.indent + "  "
-			} else if block.Type == notion.BlockTypeToDo {
-				nEnv.indent = nEnv.indent + "  "
-			}
-
-			parentID := GetParentID(block)
-			childBlocks, err := m.getChildren(parentID)
-			if err != nil {
-				log.Printf("Error fetch children, id: %v, parent id: %v, err: %v", block.ID, parentID, err)
-				continue
-			}
-
-			m.transformBlocks(nEnv, childBlocks)
-		}
-
-		env.prev = &block
-	}
+	return true
 }
 
-func markdownRichText(env *markdownEnv, text notion.RichText) {
-	markdownAnnotation(env, text, true)
+func (m *Markdown) markdownRichText(env *markdownEnv, text notion.RichText) {
+	m.markdownAnnotation(env, text, true)
 	env.b.WriteString(text.PlainText)
-	markdownAnnotation(env, text, false)
+	m.markdownAnnotation(env, text, false)
 }
 
-func markdownAnnotation(env *markdownEnv, text notion.RichText, prefix bool) {
+func (m *Markdown) markdownAnnotation(env *markdownEnv, text notion.RichText, prefix bool) {
 	switch {
 	case text.Annotations.Bold:
 		env.b.WriteString("**")
@@ -150,130 +139,193 @@ func markdownAnnotation(env *markdownEnv, text notion.RichText, prefix bool) {
 	}
 }
 
-func markdownParagraph(env *markdownEnv, block notion.Block) {
-	for _, text := range block.Paragraph.Text {
-		markdownRichText(env, text)
+// refers to children that do not need to special case in markdown (not directly convertable)
+func (m *Markdown) markdownPlainChildren(env *markdownEnv, block notion.Block) {
+	if !block.HasChildren() {
+		return
 	}
-	env.b.WriteString("\n")
+
+	m.loadChildren(block.ID())
+
+	blocks, err := m.getChildren(block.ID())
+	if err != nil {
+		log.Printf("Error fetch children of id: %v, page: %+v, err: %v", block.ID(), block.Parent(), err)
+	}
+
+	newEnv := env.Copy()
+	newEnv.prev = block
+	newEnv.parent = nil
+
+	m.transformBlocks(newEnv, blocks)
 }
 
-func markdownHeading1(env *markdownEnv, block notion.Block) {
+func (m *Markdown) markdownParagraph(env *markdownEnv, block *notion.ParagraphBlock) {
+	for _, text := range block.RichText {
+		m.markdownRichText(env, text)
+	}
+	env.b.WriteString("\n\n")
+
+	m.markdownPlainChildren(env, block)
+}
+
+func (m *Markdown) markdownHeading1(env *markdownEnv, block *notion.Heading1Block) {
 	env.b.WriteString(env.indent)
 	env.b.WriteString("## ")
-	for _, text := range block.Heading1.Text {
+	for _, text := range block.RichText {
 		env.b.WriteString(text.PlainText)
 	}
-	env.b.WriteString("\n")
+	env.b.WriteString("\n\n")
+
+	m.markdownPlainChildren(env, block)
 }
 
-func markdownHeading2(env *markdownEnv, block notion.Block) {
+func (m *Markdown) markdownHeading2(env *markdownEnv, block *notion.Heading2Block) {
 	env.b.WriteString(env.indent)
 	env.b.WriteString("### ")
-	for _, text := range block.Heading2.Text {
+	for _, text := range block.RichText {
 		env.b.WriteString(text.PlainText)
 	}
-	env.b.WriteString("\n")
+	env.b.WriteString("\n\n")
+
+	m.markdownPlainChildren(env, block)
 }
 
-func markdownHeading3(env *markdownEnv, block notion.Block) {
+func (m *Markdown) markdownHeading3(env *markdownEnv, block *notion.Heading3Block) {
 	env.b.WriteString(env.indent)
 	env.b.WriteString("#### ")
-	for _, text := range block.Heading3.Text {
+	for _, text := range block.RichText {
 		env.b.WriteString(text.PlainText)
 	}
-	env.b.WriteString("\n")
+	env.b.WriteString("\n\n")
+
+	m.markdownPlainChildren(env, block)
 }
 
-func markdownBulletedListItem(env *markdownEnv, block notion.Block) {
+// Sublist items in children
+func (m *Markdown) markdownSublistChildren(env *markdownEnv, block notion.Block) {
+	if !block.HasChildren() {
+		return
+	}
+
+	m.loadChildren(block.ID())
+
+	blocks, err := m.getChildren(block.ID())
+	if err != nil {
+		log.Printf("Error fetch children of id: %v, page: %+v, err: %v", block.ID(), block.Parent(), err)
+	}
+
+	newEnv := env.Copy()
+	newEnv.prev = block
+	newEnv.parent = block
+	newEnv.indent += "  "
+
+	m.transformBlocks(newEnv, blocks)
+}
+
+func (m *Markdown) markdownBulletedListItem(env *markdownEnv, block *notion.BulletedListItemBlock) {
 	env.b.WriteString(env.indent)
+
 	env.b.WriteString("- ")
-	for _, text := range block.BulletedListItem.Text {
-		markdownRichText(env, text)
+	for _, text := range block.RichText {
+		m.markdownRichText(env, text)
 	}
-	env.b.WriteString("\n")
+	env.b.WriteString("\n\n")
+
+	m.markdownSublistChildren(env, block)
 }
 
-func markdownNumberedListItem(env *markdownEnv, block notion.Block) {
+func (m *Markdown) markdownNumberedListItem(env *markdownEnv, block *notion.NumberedListItemBlock) {
 	env.b.WriteString(env.indent)
-	env.b.WriteString("0. ")
-	for _, text := range block.NumberedListItem.Text {
-		markdownRichText(env, text)
+
+	env.b.WriteString(fmt.Sprintf("%d. ", env.index+1))
+	for _, text := range block.RichText {
+		m.markdownRichText(env, text)
 	}
-	env.b.WriteString("\n")
+	env.b.WriteString("\n\n")
+
+	m.markdownSublistChildren(env, block)
 }
 
-func markdownToDo(env *markdownEnv, block notion.Block) {
+func (m *Markdown) markdownToDo(env *markdownEnv, block *notion.ToDoBlock) {
 	env.b.WriteString(env.indent)
 
-	if *block.ToDo.Checked {
+	if *block.Checked {
 		env.b.WriteString("- [x] ")
 	} else {
 		env.b.WriteString("- [ ] ")
 	}
 
-	for _, text := range block.ToDo.Text {
-		markdownRichText(env, text)
+	for _, text := range block.RichText {
+		m.markdownRichText(env, text)
 	}
+	env.b.WriteString("\n\n")
 
-	env.b.WriteString("\n")
+	m.markdownSublistChildren(env, block)
 }
 
-func markdownToggle(env *markdownEnv, block notion.Block) {
+func (m *Markdown) markdownToggle(env *markdownEnv, block *notion.ToggleBlock) {
 	env.b.WriteString(env.indent)
 
-	for _, text := range block.Toggle.Text {
-		markdownRichText(env, text)
+	for _, text := range block.RichText {
+		m.markdownRichText(env, text)
 	}
 
-	env.b.WriteString("\n")
+	env.b.WriteString("\n\n")
+
+	m.markdownPlainChildren(env, block)
 }
 
-func markdownCallout(env *markdownEnv, block notion.Block) {
-	env.b.WriteString(env.indent)
-	env.b.WriteString("> ")
-
-	for _, text := range block.Callout.Text {
-		markdownRichText(env, text)
-	}
-
-	env.b.WriteString("\n")
-}
-
-func markdownQuote(env *markdownEnv, block notion.Block) {
+func (m *Markdown) markdownCallout(env *markdownEnv, block *notion.CalloutBlock) {
 	env.b.WriteString(env.indent)
 	env.b.WriteString("> ")
 
-	for _, text := range block.Quote.Text {
-		markdownRichText(env, text)
+	for _, text := range block.RichText {
+		m.markdownRichText(env, text)
 	}
 
-	env.b.WriteString("\n")
+	env.b.WriteString("\n\n")
+
+	m.markdownPlainChildren(env, block)
 }
 
-func markdownCode(env *markdownEnv, block notion.Block) {
+func (m *Markdown) markdownQuote(env *markdownEnv, block *notion.QuoteBlock) {
 	env.b.WriteString(env.indent)
-	env.b.WriteString("``` ")
+	env.b.WriteString("> ")
 
-	if block.Code.Language != nil {
-		env.b.WriteString(*block.Code.Language)
+	for _, text := range block.RichText {
+		m.markdownRichText(env, text)
+	}
+
+	env.b.WriteString("\n\n")
+
+	m.markdownPlainChildren(env, block)
+}
+
+func (m *Markdown) markdownCode(env *markdownEnv, block *notion.CodeBlock) {
+	env.b.WriteString(env.indent)
+	env.b.WriteString("```")
+
+	if block.Language != nil {
+		env.b.WriteString(" ")
+		env.b.WriteString(*block.Language)
 	}
 	env.b.WriteString("\n")
 
-	for _, text := range block.Code.Text {
+	for _, text := range block.RichText {
 		env.b.WriteString(text.PlainText)
 	}
 
-	env.b.WriteString("\n```\n")
+	env.b.WriteString("\n```\n\n")
 }
 
-func markdownImage(env *markdownEnv, block notion.Block) {
+func (m *Markdown) markdownImage(env *markdownEnv, block *notion.ImageBlock) {
 	var filename string
 	var err error
 
-	if block.Image.Type == notion.FileTypeExternal {
-		filename = block.Image.External.URL
+	if block.Type == notion.FileTypeExternal {
+		filename = block.External.URL
 	} else {
-		asset := NewAssetFuture(block.ID, block.Image.File.URL)
+		asset := NewAssetFuture(block.ID(), block.File.URL)
 		env.m.assetChan <- asset
 
 		filename, err = asset.Read()
@@ -286,88 +338,90 @@ func markdownImage(env *markdownEnv, block notion.Block) {
 	env.b.WriteString(env.indent)
 	env.b.WriteString("![")
 
-	for _, text := range block.Image.Caption {
+	for _, text := range block.Caption {
 		env.b.WriteString(text.PlainText)
 	}
 
 	env.b.WriteString("](")
 	env.b.WriteString(filename)
-	env.b.WriteString(")\n")
+	env.b.WriteString(")\n\n")
 }
 
-func markdownVideo(env *markdownEnv, block notion.Block) {
+func (m *Markdown) markdownVideo(env *markdownEnv, block *notion.VideoBlock) {
 	env.b.WriteString(env.indent)
 	env.b.WriteString("[")
 
-	for _, text := range block.Video.Caption {
+	for _, text := range block.Caption {
 		env.b.WriteString(text.PlainText)
 	}
 
 	env.b.WriteString("](")
 
-	if block.Video.Type == notion.FileTypeExternal {
-		env.b.WriteString(block.Video.External.URL)
+	if block.Type == notion.FileTypeExternal {
+		env.b.WriteString(block.External.URL)
 	} else {
-		env.b.WriteString(block.Video.File.URL) // TODO downlaod
+		env.b.WriteString(block.File.URL) // TODO downlaod
 	}
 
-	env.b.WriteString(")\n")
+	env.b.WriteString(")\n\n")
 }
 
-func markdownBookmark(env *markdownEnv, block notion.Block) {
+func (m *Markdown) markdownBookmark(env *markdownEnv, block *notion.BookmarkBlock) {
 	env.b.WriteString(env.indent)
 
-	hasCaption := len(block.Bookmark.Caption) > 0
+	hasCaption := len(block.Caption) > 0
 
 	if hasCaption {
 		env.b.WriteString("[")
-		for _, text := range block.Bookmark.Caption {
+		for _, text := range block.Caption {
 			env.b.WriteString(text.PlainText)
 		}
 		env.b.WriteString("](")
 	}
 
-	env.b.WriteString(block.Bookmark.URL)
+	env.b.WriteString(block.URL)
 
 	if hasCaption {
 		env.b.WriteString(")")
 	}
 
+	env.b.WriteString("\n\n")
+}
+
+func (m *Markdown) markdownEquation(env *markdownEnv, block *notion.EquationBlock) {
+	env.b.WriteString(env.indent)
+	env.b.WriteString("$$\n")
+	env.b.WriteString(block.Expression)
+	env.b.WriteString("\n$$\n\n")
+}
+
+func (m *Markdown) markdownDivider(env *markdownEnv, block *notion.DividerBlock) {
+	env.b.WriteString(env.indent)
+	env.b.WriteString("---\n\n")
+}
+
+func (m *Markdown) markdownColumnList(env *markdownEnv, block *notion.ColumnListBlock) {
+	m.markdownPlainChildren(env, block)
+}
+
+func (m *Markdown) markdownColumn(env *markdownEnv, block *notion.ColumnBlock) {
+	m.markdownPlainChildren(env, block)
+}
+
+func (m *Markdown) markdownTable(env *markdownEnv, block *notion.TableBlock) {
+	m.markdownPlainChildren(env, block)
+
 	env.b.WriteString("\n")
 }
 
-func markdownEquation(env *markdownEnv, block notion.Block) {
-	env.b.WriteString(env.indent)
-	env.b.WriteString("$$")
-	env.b.WriteString(block.Equation.Expression)
-	env.b.WriteString("$$\n")
-}
-
-func markdownDivider(env *markdownEnv, block notion.Block) {
-	env.b.WriteString(env.indent)
-	env.b.WriteString("---\n")
-}
-
-func markdownColumnList(env *markdownEnv, block notion.Block) {
-	// Empty
-}
-
-func markdownColumn(env *markdownEnv, block notion.Block) {
-	// Empty
-}
-
-func markdownTable(env *markdownEnv, block notion.Block) {
-	// Empty
-}
-
-func markdownTableRow(env *markdownEnv, block notion.Block) {
-	for _, cells := range block.TableRow.Cells {
+func (m *Markdown) markdownTableRow(env *markdownEnv, block *notion.TableRowBlock) {
+	for _, cells := range block.Cells {
 		env.b.WriteString("| ")
 
 		for _, cell := range cells {
-			markdownAnnotation(env, cell, true)
+			m.markdownAnnotation(env, cell, true)
 			env.b.WriteString(strings.ReplaceAll(cell.PlainText, "\n", "<br>"))
-			markdownAnnotation(env, cell, false)
+			m.markdownAnnotation(env, cell, false)
 		}
 
 		env.b.WriteString(" ")
@@ -376,7 +430,7 @@ func markdownTableRow(env *markdownEnv, block notion.Block) {
 	env.b.WriteString("|\n")
 
 	if env.index == 0 {
-		for i := 0; i < len(block.TableRow.Cells); i++ {
+		for i := 0; i < len(block.Cells); i++ {
 			env.b.WriteString("| --- ")
 		}
 
@@ -384,19 +438,28 @@ func markdownTableRow(env *markdownEnv, block notion.Block) {
 	}
 }
 
-func markdownLinkPreview(env *markdownEnv, block notion.Block) {
+func (m *Markdown) markdownLinkPreview(env *markdownEnv, block *notion.LinkPreviewBlock) {
 	// TODO
 }
 
-func markdownLinkToPage(env *markdownEnv, block notion.Block) {
+func (m *Markdown) markdownLinkToPage(env *markdownEnv, block *notion.LinkToPageBlock) {
 	// TODO
 }
 
 // TODO handle synced block -> create a separate page and use page embed?
-func markdownSyncedBlock(env *markdownEnv, block notion.Block) {
-	if block.SyncedBlock.SyncedFrom != nil {
-		return // TODO how to do block link?
+// https://help.obsidian.md/Linking+notes+and+files/Internal+links
+func (m *Markdown) markdownSyncedBlock(env *markdownEnv, block *notion.SyncedBlock) {
+	if block.SyncedFrom != nil { // TODO handle synced from
+		env.b.WriteString("[[^")
+		env.b.WriteString(block.SyncedFrom.BlockID)
+		env.b.WriteString("]]\n\n")
+
+		return
 	}
 
-	// TODO handle synced from
+	m.markdownPlainChildren(env, block)
+
+	env.b.WriteString("^")
+	env.b.WriteString(block.ID())
+	env.b.WriteString("\n\n")
 }

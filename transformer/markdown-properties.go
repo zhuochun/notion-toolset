@@ -146,9 +146,9 @@ func markdownPropTitle(env *markdownEnv, key string, prop notion.DatabasePagePro
 
 func markdownPropRichText(env *markdownEnv, key string, prop notion.DatabasePageProperty) {
 	for _, text := range prop.RichText {
-		markdownAnnotation(env, text, true)
+		env.m.markdownAnnotation(env, text, true)
 		env.b.WriteString(text.PlainText)
-		markdownAnnotation(env, text, false)
+		env.m.markdownAnnotation(env, text, false)
 	}
 
 	env.b.WriteString("\n")

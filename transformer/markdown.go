@@ -34,21 +34,20 @@ type markdownEnv struct {
 	m *Markdown
 	b io.StringWriter
 
-	prev   *notion.Block
-	parent *notion.Block
+	parent notion.Block
+	prev   notion.Block
+	next   notion.Block
 
 	index  int
 	indent string
 
-	aliasMap sync.Map
+	aliasMap *sync.Map
 }
 
 func (env *markdownEnv) Copy() *markdownEnv {
 	return &markdownEnv{
 		m:        env.m,
 		b:        env.b,
-		prev:     env.prev,
-		parent:   env.parent,
 		indent:   env.indent,
 		aliasMap: env.aliasMap,
 	}
@@ -73,9 +72,7 @@ func (m *Markdown) TransformOut(b io.StringWriter) {
 
 	// build alias index on the fly
 	// TODO cache in a temp file and read the temp file instead?
-	if len(m.config.IndexAlias) > 0 {
-		env.aliasMap = buildAliasIndex(m.config.IndexAlias)
-	}
+	env.aliasMap = buildAliasIndex(m.config.IndexAlias)
 
 	// write page properties as front matters
 	if m.page != nil {
@@ -99,10 +96,19 @@ func (m *Markdown) TransformOut(b io.StringWriter) {
 	m.transformBlocks(env, m.pageBlocks)
 }
 
-func (m *Markdown) isListType(t notion.BlockType) bool {
-	return t == notion.BlockTypeBulletedListItem || t == notion.BlockTypeNumberedListItem
+// Not atomic
+func (m *Markdown) loadChildren(blockID string) {
+	// check whether it is already loaded before
+	if _, ok := m.children[blockID]; ok {
+		return
+	}
+
+	block := NewBlockFuture(blockID)
+	m.children[blockID] = block
+	m.queryChan <- block
 }
 
+// Read the children
 func (m *Markdown) getChildren(blockID string) ([]notion.Block, error) {
 	f, ok := m.children[blockID]
 	if !ok {

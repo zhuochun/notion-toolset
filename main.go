@@ -3,9 +3,7 @@ package main
 import (
 	"flag"
 	"log"
-	"math/rand"
 	"os"
-	"time"
 
 	"github.com/dstotijn/go-notion"
 	"github.com/go-yaml/yaml"
@@ -30,7 +28,6 @@ type Config struct {
 	WeeklyJournal    WeeklyJournalConfig    `yaml:"weeklyJournal"`
 	DuplicateChecker DuplicateCheckerConfig `yaml:"duplicateChecker"`
 	Collector        CollectorConfig        `yaml:"collector"`
-	Cluster          ClusterConfig          `yaml:"cluster"`
 	Exporter         ExporterConfig         `yaml:"exporter"`
 }
 
@@ -43,7 +40,6 @@ type Cmd interface {
 
 func main() {
 	flag.Parse()
-	rand.Seed(time.Now().Unix())
 
 	notionClient := newNotionClient()
 
