@@ -54,7 +54,8 @@ func (f *Flashback) Run() error {
 
 	log.Printf("Lookback %v Hours/%v Day, Queried pages: %+v", lookbackHour, lookbackHour/24, len(pages))
 	if len(pages) < 1 {
-		return fmt.Errorf("skipped. no pages fetched")
+		log.Printf("Skipped. no pages fetched")
+		return nil
 	}
 
 	if f.FlashbackNum < 1 {
