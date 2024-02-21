@@ -99,6 +99,10 @@ func (m *Markdown) transformFrontMatter(env *markdownEnv, page *notion.Page) {
 }
 
 func (m *Markdown) transformMetadata(env *markdownEnv, page *notion.Page) {
+	if m.config.NoMetadata { // skip metadata
+		return
+	}
+
 	props, ok := page.Properties.(notion.DatabasePageProperties)
 	if !ok {
 		return

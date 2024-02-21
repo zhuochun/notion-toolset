@@ -105,6 +105,10 @@ func (m *Markdown) markdownRichText(env *markdownEnv, text notion.RichText) {
 }
 
 func (m *Markdown) markdownAnnotation(env *markdownEnv, text notion.RichText, prefix bool) {
+	if env.m.config.PlainText {
+		return
+	}
+
 	switch {
 	case text.Annotations.Bold:
 		env.b.WriteString("**")
@@ -323,6 +327,10 @@ func (m *Markdown) markdownCode(env *markdownEnv, block *notion.CodeBlock) {
 }
 
 func (m *Markdown) markdownImage(env *markdownEnv, block *notion.ImageBlock) {
+	if m.config.PlainText {
+		return
+	}
+
 	var filename string
 	var err error
 
@@ -352,6 +360,10 @@ func (m *Markdown) markdownImage(env *markdownEnv, block *notion.ImageBlock) {
 }
 
 func (m *Markdown) markdownVideo(env *markdownEnv, block *notion.VideoBlock) {
+	if m.config.PlainText {
+		return
+	}
+
 	env.b.WriteString(env.indent)
 	env.b.WriteString("[")
 
@@ -371,6 +383,10 @@ func (m *Markdown) markdownVideo(env *markdownEnv, block *notion.VideoBlock) {
 }
 
 func (m *Markdown) markdownBookmark(env *markdownEnv, block *notion.BookmarkBlock) {
+	if m.config.PlainText {
+		return
+	}
+
 	env.b.WriteString(env.indent)
 
 	hasCaption := len(block.Caption) > 0
@@ -458,15 +474,19 @@ func (m *Markdown) markdownSyncedBlock(env *markdownEnv, block *notion.SyncedBlo
 		return
 	}
 
-	env.b.WriteString(env.indent)
-	env.b.WriteString("<sync ID=\"")
-	env.b.WriteString(block.ID())
-	env.b.WriteString("\">\n\n")
+	if !m.config.PlainText {
+		env.b.WriteString(env.indent)
+		env.b.WriteString("<sync ID=\"")
+		env.b.WriteString(block.ID())
+		env.b.WriteString("\">\n\n")
+	}
 
 	m.markdownPlainChildren(env, block)
 
-	env.b.WriteString(env.indent)
-	env.b.WriteString("</sync>\n\n")
+	if !m.config.PlainText {
+		env.b.WriteString(env.indent)
+		env.b.WriteString("</sync>\n\n")
+	}
 }
 
 func (m *Markdown) markdownSyncedFromBlock(env *markdownEnv, block *notion.SyncedBlock) {
@@ -481,13 +501,17 @@ func (m *Markdown) markdownSyncedFromBlock(env *markdownEnv, block *notion.Synce
 	newEnv.prev = block
 	newEnv.parent = block
 
-	env.b.WriteString(env.indent)
-	env.b.WriteString("<sync sourceID=\"")
-	env.b.WriteString(block.SyncedFrom.BlockID)
-	env.b.WriteString("\">\n\n")
+	if !m.config.PlainText {
+		env.b.WriteString(env.indent)
+		env.b.WriteString("<sync sourceID=\"")
+		env.b.WriteString(block.SyncedFrom.BlockID)
+		env.b.WriteString("\">\n\n")
+	}
 
 	m.transformBlocks(newEnv, blocks)
 
-	env.b.WriteString(env.indent)
-	env.b.WriteString("</sync>\n\n")
+	if !m.config.PlainText {
+		env.b.WriteString(env.indent)
+		env.b.WriteString("</sync>\n\n")
+	}
 }

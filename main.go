@@ -15,6 +15,7 @@ const (
 
 var (
 	flagCmd        = flag.String("cmd", "", "Run command")
+	flagExecOne    = flag.String("one", "", "Run with one ID") // special for some commands
 	flagMulti      = flag.Bool("multi", false, "Multiple configs in the config file")
 	flagMultiIdx   = flag.Int("idx", -1, "Use a specific config by index in the multiple config") // start from index 0
 	flagRepeat     = flag.Int("repeat", 1, "Repeat this command")                                 // start with default 1 time
@@ -115,6 +116,7 @@ func runCmd(notionClient *notion.Client, cfg Config) {
 	case "export": // export pages from a database into local folders in markdown
 		cmd = &Exporter{
 			DebugMode:      *flagDebugMode,
+			ExecOne:        *flagExecOne,
 			Client:         notionClient,
 			ExporterConfig: cfg.Exporter,
 		}
@@ -144,6 +146,10 @@ func newNotionClient() *notion.Client {
 }
 
 func loadConfig(configPath string) Config {
+	if configPath == "" && *flagExecOne != "" {
+		return Config{} // allow empty config for execOne
+	}
+
 	configFile, err := os.ReadFile(configPath)
 	if err != nil {
 		log.Printf("Error in Config File (%v): %v", configPath, err)

@@ -8,6 +8,8 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
+	"reflect"
 	"regexp"
 	"strings"
 	"sync"
@@ -38,6 +40,7 @@ type ExporterConfig struct {
 
 type Exporter struct {
 	DebugMode bool
+	ExecOne   string
 
 	Client *notion.Client
 	ExporterConfig
@@ -50,6 +53,23 @@ type Exporter struct {
 }
 
 func (e *Exporter) Validate() error {
+	// handle execOne special case
+	if e.ExecOne != "" {
+		if e.Directory == "" { // assume current directory
+			e.Directory, _ = os.Getwd()
+		}
+
+		if reflect.DeepEqual(e.Markdown, transformer.MarkdownConfig{}) { // set to sensible defaults
+			e.Markdown = transformer.MarkdownConfig{
+				NoAlias:        true,
+				NoFrontMatters: true,
+				NoMetadata:     true,
+				TitleToH1:      true,
+				PlainText:      true,
+			}
+		}
+	}
+
 	// check export directory
 	if err := e.precheckDir(e.Directory); err != nil {
 		return err
@@ -130,6 +150,24 @@ func (e *Exporter) Run() error {
 }
 
 func (e *Exporter) ScanPages() (chan []notion.Page, chan error) {
+	if e.ExecOne != "" {
+		pagesChan := make(chan []notion.Page, 1)
+		errChan := make(chan error, 1)
+
+		if page, err := e.Client.FindPageByID(context.Background(), e.ExecOne); err == nil {
+			pagesChan <- []notion.Page{page}
+		} else {
+			errChan <- err
+		}
+
+		close(pagesChan)
+		return pagesChan, errChan
+	}
+
+	return e.scanDatabasePages()
+}
+
+func (e *Exporter) scanDatabasePages() (chan []notion.Page, chan error) {
 	q := NewDatabaseQuery(e.Client, e.DatabaseID)
 
 	date := "" // default
@@ -253,6 +291,10 @@ func (e *Exporter) exportPage(page notion.Page) error {
 	}
 	defer file.Close()
 
+	if e.DebugMode {
+		log.Printf("Exported to file: [%v] -> %v", page.ID, filename)
+	}
+
 	t := transformer.New(e.Markdown, &page, blocks, e.queryPool, e.downloadPool)
 	t.TransformOut(file)
 
@@ -260,7 +302,7 @@ func (e *Exporter) exportPage(page notion.Page) error {
 }
 
 func (e *Exporter) getExportFilename(page notion.Page) string {
-	filename := e.Directory + transformer.SimpleID(page.ID) + ".md"
+	filename := filepath.Join(e.Directory, transformer.SimpleID(page.ID)+".md")
 	// TODO slug the title?
 	if e.UseTitleAsFilename {
 		if title, err := transformer.GetPageTitle(page); err == nil {
@@ -269,7 +311,7 @@ func (e *Exporter) getExportFilename(page notion.Page) string {
 			}
 			title = strings.TrimSpace(title)
 
-			filename = e.Directory + title + ".md"
+			filename = filepath.Join(e.Directory, title+".md")
 		}
 	}
 	return filename
@@ -339,5 +381,5 @@ func (e *Exporter) downloadAsset(asset *transformer.AssetFuture) (string, error)
 }
 
 func (e *Exporter) getAssetFilename(asset *transformer.AssetFuture) string {
-	return e.AssetDirectory + transformer.SimpleID(asset.BlockID) + asset.Extension
+	return filepath.Join(e.AssetDirectory, transformer.SimpleID(asset.BlockID)+asset.Extension)
 }

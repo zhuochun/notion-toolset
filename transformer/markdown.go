@@ -21,13 +21,18 @@ type Markdown struct {
 }
 
 type MarkdownConfig struct {
-	NoAlias        bool     `yaml:"noAlias"`
+	NoAlias    bool   `yaml:"noAlias"`
+	IndexAlias string `yaml:"indexAliasPath"` // path to files with the alias property
+
 	NoFrontMatters bool     `yaml:"noFrontMatters"`
-	TitleToH1      bool     `yaml:"titleToH1"`
-	SelectToTags   bool     `yaml:"selectToTags"`
-	FrontMatters   []string `yaml:"frontMatters"`
-	Metadata       []string `yaml:"metadata"`
-	IndexAlias     string   `yaml:"indexAliasPath"`
+	FrontMatters   []string `yaml:"frontMatters"` // export fields specified only
+
+	NoMetadata bool     `yaml:"noMetadata"`
+	Metadata   []string `yaml:"metadata"` // export fields specified only as metadata
+
+	TitleToH1    bool `yaml:"titleToH1"`
+	SelectToTags bool `yaml:"selectToTags"` // apply to select properties
+	PlainText    bool `yaml:"plainText"`    // make the content less clutered, no links/images/styles
 }
 
 type markdownEnv struct {
