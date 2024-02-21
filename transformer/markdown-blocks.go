@@ -336,7 +336,7 @@ func (m *Markdown) markdownImage(env *markdownEnv, block *notion.ImageBlock) {
 
 	if block.Type == notion.FileTypeExternal {
 		filename = block.External.URL
-	} else {
+	} else if env.m.assetChan != nil {
 		asset := NewAssetFuture(block.ID(), block.File.URL)
 		env.m.assetChan <- asset
 

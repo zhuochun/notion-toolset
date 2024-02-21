@@ -42,8 +42,9 @@ type PageBuilder struct {
 }
 
 type BlockBuilder struct {
-	Date   string
-	PageID string
+	Date    string
+	Content string
+	PageID  string
 }
 
 type ToggleBuilder struct {

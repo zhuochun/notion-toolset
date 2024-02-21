@@ -14,8 +14,8 @@ type Markdown struct {
 	pageBlocks []notion.Block
 	children   map[string]*BlockFuture
 
-	queryChan chan *BlockFuture
-	assetChan chan *AssetFuture
+	queryChan chan *BlockFuture // needed to load subchildren
+	assetChan chan *AssetFuture // needed to export assets
 
 	config MarkdownConfig
 }

@@ -30,6 +30,7 @@ type Config struct {
 	DuplicateChecker DuplicateCheckerConfig `yaml:"duplicateChecker"`
 	Collector        CollectorConfig        `yaml:"collector"`
 	Exporter         ExporterConfig         `yaml:"exporter"`
+	LLM              LangModelConfig        `yaml:"llm"`
 }
 
 type Cmd interface {
@@ -119,6 +120,13 @@ func runCmd(notionClient *notion.Client, cfg Config) {
 			ExecOne:        *flagExecOne,
 			Client:         notionClient,
 			ExporterConfig: cfg.Exporter,
+		}
+	case "llm": // run custom prompt on pages from a database
+		cmd = &LangModel{
+			DebugMode:       *flagDebugMode,
+			ExecOne:         *flagExecOne,
+			Client:          notionClient,
+			LangModelConfig: cfg.LLM,
 		}
 	default:
 		log.Fatalf("Unknown cmd: `%v`", *flagCmd)
