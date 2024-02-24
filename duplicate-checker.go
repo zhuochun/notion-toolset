@@ -88,12 +88,12 @@ func (d *DuplicateChecker) ScanPages() (chan []notion.Page, chan error) {
 func (d *DuplicateChecker) WriteBlock(pageID string) (notion.BlockChildrenResponse, error) {
 	w := NewAppendBlock(d.Client, d.DuplicateDumpID)
 
-	if err := w.SetBlock("Duplicate", d.DuplicateDumpTextBlock, BlockBuilder{
+	if err := w.AddParagraph("Duplicate", d.DuplicateDumpTextBlock, BlockBuilder{
 		Date:   time.Now().Format(layoutDate),
 		PageID: pageID,
 	}); err != nil {
 		return notion.BlockChildrenResponse{}, err
 	}
 
-	return w.WriteParagraph(context.TODO())
+	return w.Do(context.TODO())
 }

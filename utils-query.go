@@ -9,6 +9,30 @@ import (
 	"golang.org/x/time/rate"
 )
 
+type QueryBuilder struct {
+	Date  string
+	Title string
+}
+
+const tmplQueryDBbyTitle = `
+{
+	"filter": {
+		"and": [
+			{
+				"property": "title",
+				"rich_text": { "equals": "{{.Title}}" }
+			}
+		]
+	},
+	"sorts": [
+		{
+			"timestamp": "created_time",
+			"direction": "ascending"
+		}
+	]
+}
+`
+
 type DatabaseQuery struct {
 	Client     *notion.Client
 	DatabaseID string

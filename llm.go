@@ -4,10 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"html/template"
 	"log"
 	"os"
+	"strings"
 	"sync"
-	"text/template"
 	"time"
 
 	"github.com/dstotijn/go-notion"
@@ -22,6 +23,7 @@ type LangModelConfig struct {
 	LookbackDays  int    `yaml:"lookbackDays"` // additional date info
 	// prompt message
 	Prompt        string `yaml:"prompt"`
+	Model         string `yaml:"model"`
 	RespTextBlock string `yaml:"respTextBlock"` // Format https://pkg.go.dev/github.com/dstotijn/go-notion#ParagraphBlock
 	// tuning https://developers.notion.com/reference/request-limits
 	TaskSpeed float64 `yaml:"taskSpeed"`
@@ -233,6 +235,10 @@ func (m *LangModel) runLLMPage(page notion.Page) error {
 		},
 	}
 
+	if m.Model != "" { // Use user requested model
+		req.Model = m.Model
+	}
+
 	resp, err := m.OpenaiClient.CreateChatCompletion(context.Background(), req)
 	if err != nil {
 		return fmt.Errorf("openai chat err: %v", err)
@@ -252,12 +258,30 @@ func (m *LangModel) runLLMPage(page notion.Page) error {
 func (m *LangModel) WriteBlock(page notion.Page, content string) (notion.BlockChildrenResponse, error) {
 	w := NewAppendBlock(m.Client, page.ID)
 
-	if err := w.SetBlock("LLM", m.RespTextBlock, BlockBuilder{
-		Date:    time.Now().Format(layoutDate),
-		Content: template.JSEscapeString(content),
-	}); err != nil {
-		return notion.BlockChildrenResponse{}, err
+	paragraphs := strings.Split(content, "\n")
+
+	for _, p := range paragraphs {
+		if p == "" { // skip empty lines
+			continue
+		}
+
+		p = strings.TrimPrefix(p, "- ") // TODO better handle response text
+
+		if m.RespTextBlock != "" {
+			if err := w.AddParagraph("LLM", m.RespTextBlock, BlockBuilder{
+				Date:    time.Now().Format(layoutDate),
+				Content: template.HTMLEscaper(p),
+			}); err != nil {
+				return notion.BlockChildrenResponse{}, err
+			}
+		} else {
+			w.Blocks = append(w.Blocks, notion.ParagraphBlock{
+				RichText: []notion.RichText{
+					{Text: &notion.Text{Content: p}},
+				},
+			})
+		}
 	}
 
-	return w.WriteParagraph(context.TODO())
+	return w.Do(context.TODO())
 }

@@ -137,12 +137,12 @@ func (f *Flashback) SetFlashbackPageID() {
 func (f *Flashback) WriteBlock(pageID string) (notion.BlockChildrenResponse, error) {
 	w := NewAppendBlock(f.Client, f.FlashbackPageID)
 
-	if err := w.SetBlock("Flashback", f.FlashbackTextBlock, BlockBuilder{
+	if err := w.AddParagraph("Flashback", f.FlashbackTextBlock, BlockBuilder{
 		Date:   time.Now().Format(layoutDate),
 		PageID: pageID,
 	}); err != nil {
 		return notion.BlockChildrenResponse{}, err
 	}
 
-	return w.WriteParagraph(context.TODO())
+	return w.Do(context.TODO())
 }

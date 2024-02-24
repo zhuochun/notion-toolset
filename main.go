@@ -4,13 +4,11 @@ import (
 	"flag"
 	"log"
 	"os"
+	"regexp"
+	"strings"
 
 	"github.com/dstotijn/go-notion"
 	"github.com/go-yaml/yaml"
-)
-
-const (
-	layoutDate = "2006-01-02"
 )
 
 var (
@@ -21,6 +19,11 @@ var (
 	flagRepeat     = flag.Int("repeat", 1, "Repeat this command")                                 // start with default 1 time
 	flagConfigPath = flag.String("config", "", "Path to config file")
 	flagDebugMode  = flag.Bool("debug", false, "Enable debug mode")
+)
+
+var (
+	layoutDate  = "2006-01-22"                            // date format used in journal title
+	hashIDRegex = regexp.MustCompile("([a-zA-Z0-9]{32})") // to extract the pageID
 )
 
 type Config struct {
@@ -42,6 +45,16 @@ type Cmd interface {
 
 func main() {
 	flag.Parse()
+
+	if *flagExecOne != "" && strings.HasPrefix(*flagExecOne, "https:") {
+		matches := hashIDRegex.FindStringSubmatch(*flagExecOne)
+		// use the ID only
+		if len(matches) > 1 {
+			*flagExecOne = matches[1]
+
+			log.Printf("Parsed ID: %v", *flagExecOne)
+		}
+	}
 
 	notionClient := newNotionClient()
 

@@ -10,45 +10,11 @@ import (
 	"github.com/dstotijn/go-notion"
 )
 
-type QueryBuilder struct {
-	Date  string
-	Title string
-}
-
-const tmplQueryDBbyTitle = `
-{
-	"filter": {
-		"and": [
-			{
-				"property": "title",
-				"rich_text": { "equals": "{{.Title}}" }
-			}
-		]
-	},
-	"sorts": [
-		{
-			"timestamp": "created_time",
-			"direction": "ascending"
-		}
-	]
-}
-`
-
 type PageBuilder struct {
 	Title      string
 	Date       string
 	DateEnd    string
 	DatabaseID string
-}
-
-type BlockBuilder struct {
-	Date    string
-	Content string
-	PageID  string
-}
-
-type ToggleBuilder struct {
-	Title string
 }
 
 func Tmpl(name, s string, builder interface{}) ([]byte, error) {
@@ -65,11 +31,17 @@ func Tmpl(name, s string, builder interface{}) ([]byte, error) {
 	return raw.Bytes(), nil
 }
 
+type BlockBuilder struct {
+	Date    string
+	Content string
+	PageID  string
+}
+
 type AppendBlock struct {
 	Client         *notion.Client
 	AppendToPageID string
 
-	Block []byte
+	Blocks []notion.Block
 }
 
 func NewAppendBlock(c *notion.Client, appendTo string) *AppendBlock {
@@ -79,26 +51,27 @@ func NewAppendBlock(c *notion.Client, appendTo string) *AppendBlock {
 	}
 }
 
-func (a *AppendBlock) SetBlock(name, s string, builder interface{}) error {
+// https://pkg.go.dev/github.com/dstotijn/go-notion#ParagraphBlock
+// https://pkg.go.dev/github.com/dstotijn/go-notion#RichText
+func (a *AppendBlock) AddParagraph(name, s string, builder interface{}) error {
 	if s == "" {
 		return fmt.Errorf("empty block text: %s", name)
 	}
 
-	block, err := Tmpl(name, s, builder)
+	rawBlock, err := Tmpl(name, s, builder)
 	if err != nil {
 		return err
 	}
-	a.Block = block
+
+	block := &notion.ParagraphBlock{}
+	if err := json.Unmarshal(rawBlock, block); err != nil {
+		return fmt.Errorf("unmarshal Block: %w", err)
+	}
+
+	a.Blocks = append(a.Blocks, block)
 	return nil
 }
 
-// https://pkg.go.dev/github.com/dstotijn/go-notion#ParagraphBlock
-// https://pkg.go.dev/github.com/dstotijn/go-notion#RichText
-func (a *AppendBlock) WriteParagraph(ctx context.Context) (notion.BlockChildrenResponse, error) {
-	block := &notion.ParagraphBlock{}
-	if err := json.Unmarshal(a.Block, block); err != nil {
-		return notion.BlockChildrenResponse{}, fmt.Errorf("unmarshal Block: %w", err)
-	}
-
-	return a.Client.AppendBlockChildren(ctx, a.AppendToPageID, []notion.Block{block})
+func (a *AppendBlock) Do(ctx context.Context) (notion.BlockChildrenResponse, error) {
+	return a.Client.AppendBlockChildren(ctx, a.AppendToPageID, a.Blocks)
 }

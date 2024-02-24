@@ -163,11 +163,11 @@ func (c *Collector) ScanPages() (chan []notion.Page, chan error) {
 func (c *Collector) WriteBlock(pageID string) (notion.BlockChildrenResponse, error) {
 	w := NewAppendBlock(c.Client, c.CollectDumpID)
 
-	if err := w.SetBlock("Collector", c.CollectDumpTextBlock, BlockBuilder{
+	if err := w.AddParagraph("Collector", c.CollectDumpTextBlock, BlockBuilder{
 		PageID: pageID,
 	}); err != nil {
 		return notion.BlockChildrenResponse{}, err
 	}
 
-	return w.WriteParagraph(context.TODO())
+	return w.Do(context.TODO())
 }
