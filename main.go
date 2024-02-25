@@ -22,7 +22,7 @@ var (
 )
 
 var (
-	layoutDate  = "2006-01-22"                            // date format used in journal title
+	layoutDate  = "2006-01-02"                            // date format used in journal title
 	hashIDRegex = regexp.MustCompile("([a-zA-Z0-9]{32})") // to extract the pageID
 )
 

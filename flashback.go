@@ -111,11 +111,16 @@ func (f *Flashback) SetFlashbackPageID() {
 	title := now.Format(layoutDate)
 
 	q := NewDatabaseQuery(f.Client, f.FlashbackJournalID)
-
-	if err := q.SetQuery(tmplQueryDBbyTitle, QueryBuilder{
-		Title: title,
-	}); err != nil {
-		log.Panicf("Invalid query: %v, err: %v", f.DatabaseQuery, err)
+	q.Query = &notion.DatabaseQuery{
+		Filter: &notion.DatabaseQueryFilter{
+			Property: "title",
+			DatabaseQueryPropertyFilter: notion.DatabaseQueryPropertyFilter{
+				Title: &notion.TextPropertyFilter{Equals: title},
+			},
+		},
+		Sorts: []notion.DatabaseQuerySort{
+			{Timestamp: notion.SortTimeStampCreatedTime, Direction: notion.SortDirAsc},
+		},
 	}
 
 	pages, err := q.Once(context.TODO())
