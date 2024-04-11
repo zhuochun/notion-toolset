@@ -29,6 +29,9 @@ type LangModelConfig struct {
 	RespTextBlock string `yaml:"respTextBlock"` // Format https://pkg.go.dev/github.com/dstotijn/go-notion#ParagraphBlock
 	// tuning https://developers.notion.com/reference/request-limits
 	TaskSpeed float64 `yaml:"taskSpeed"`
+	// skip processing a pages if chars is <min or >max thresholds
+	PageMinChars int `yaml:"pageMinChars"`
+	PageMaxChars int `yaml:"pageMaxChars"`
 }
 
 type LangModel struct {
@@ -118,7 +121,9 @@ func (m *LangModel) ScanPages() (chan []notion.Page, chan error) {
 			return m.scanDirectPages([]string{})
 		}
 
-		pageIDs := strings.Split(string(content), "\n")
+		normalizedContent := strings.Replace(string(content), "\r\n", "\n", -1)
+		pageIDs := strings.Split(normalizedContent, "\n")
+
 		return m.scanDirectPages(pageIDs)
 	}
 
@@ -126,7 +131,7 @@ func (m *LangModel) ScanPages() (chan []notion.Page, chan error) {
 }
 
 func (m *LangModel) scanDirectPages(pageIDs []string) (chan []notion.Page, chan error) {
-	pagesChan := make(chan []notion.Page, 1)
+	pagesChan := make(chan []notion.Page, len(pageIDs))
 	errChan := make(chan error, 1)
 
 	for _, pageID := range pageIDs {
@@ -242,8 +247,11 @@ func (m *LangModel) runLLMPage(page notion.Page) error {
 	t := transformer.New(markdown, &page, blocks, m.queryPool, nil)
 	content := t.Transform()
 
-	if len(content) < 300 { // TODO arbitrary chars threshold
-		log.Printf("Skip short content, id: %v, len: %v", page.ID, len(content))
+	if len(content) < m.PageMinChars {
+		log.Printf("Skip content by MinChars=%v, id: %v, len: %v", m.PageMinChars, page.ID, len(content))
+		return nil
+	} else if m.PageMaxChars > 0 && len(content) > m.PageMaxChars {
+		log.Printf("Skip content by MaxChars=%v, id: %v, len: %v", m.PageMaxChars, page.ID, len(content))
 		return nil
 	}
 
