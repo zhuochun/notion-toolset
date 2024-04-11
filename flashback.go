@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"os"
 	"time"
 
 	"github.com/dstotijn/go-notion"
@@ -19,7 +20,7 @@ type FlashbackConfig struct {
 	FlashbackPageID    string    `yaml:"flashbackPageID"`    // Page to write the flashback
 	FlashbackJournalID string    `yaml:"flashbackJournalID"` // Use daily journal database ID, this will overwrite FlashbackPageID
 	FlashbackTextBlock string    `yaml:"flashbackTextBlock"` // Format https://pkg.go.dev/github.com/dstotijn/go-notion#ParagraphBlock
-	// FlashbackPageBlock string    `yaml:"flashbackPageBlock"` // DEPRECATED (2023-12) use flashbackTextBlock
+	FlashbackChainFile string    `yaml:"flashbackChainFile"` // Filename for chain with LLM cmd
 }
 
 type Flashback struct {
@@ -64,24 +65,41 @@ func (f *Flashback) Run() error {
 		f.FlashbackNum = len(pages)
 	}
 
-	skip := map[int]struct{}{}
+	picked := map[int]struct{}{}
 	for i := 0; i < f.FlashbackNum; i++ {
 		n := rand.Intn(len(pages))
 		for {
-			if _, found := skip[n]; found {
+			if _, found := picked[n]; found {
 				n = (n + 1) % len(pages)
 			} else {
-				skip[n] = struct{}{}
+				picked[n] = struct{}{}
 				break
 			}
 		}
+	}
 
+	for n := range picked { // write out block
 		if block, err := f.WriteBlock(pages[n].ID); err == nil {
 			if len(block.Results) > 0 {
 				log.Printf("Append block child %v", block.Results[0].ID())
 			}
 		}
 	}
+
+	if f.FlashbackChainFile != "" { // write out chain file
+		file, err := os.Create(f.FlashbackChainFile)
+		if err != nil {
+			return fmt.Errorf("create file: %v, err: %v", f.FlashbackChainFile, err)
+		}
+		defer file.Close()
+
+		for n := range picked {
+			if _, err = file.WriteString(pages[n].ID); err != nil {
+				log.Printf("Failed writing to file, err: %v", err)
+			}
+		}
+	}
+
 	return nil
 }
 

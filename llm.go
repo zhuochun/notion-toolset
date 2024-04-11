@@ -21,7 +21,9 @@ type LangModelConfig struct {
 	DatabaseID    string `yaml:"databaseID"`
 	DatabaseQuery string `yaml:"databaseQuery"`
 	LookbackDays  int    `yaml:"lookbackDays"` // additional date info
-	// prompt message
+	// Read from chain file instead of database, overwrite database configs above
+	ChainFile string `yaml:"chainFile"`
+	// LLM prompt message
 	Prompt        string `yaml:"prompt"`
 	Model         string `yaml:"model"`
 	RespTextBlock string `yaml:"respTextBlock"` // Format https://pkg.go.dev/github.com/dstotijn/go-notion#ParagraphBlock
@@ -105,21 +107,40 @@ func (m *LangModel) Run() error {
 }
 
 func (m *LangModel) ScanPages() (chan []notion.Page, chan error) {
-	if m.ExecOne != "" {
-		pagesChan := make(chan []notion.Page, 1)
-		errChan := make(chan error, 1)
+	if m.ExecOne != "" { // exec one page ID
+		return m.scanDirectPages([]string{m.ExecOne})
+	}
 
-		if page, err := m.Client.FindPageByID(context.Background(), m.ExecOne); err == nil {
+	if m.ChainFile != "" { // exec IDs found in a file
+		content, err := os.ReadFile(m.ChainFile)
+		if err != nil {
+			log.Printf("Open file errored, file: %v, err: %v", m.ChainFile, err)
+			return m.scanDirectPages([]string{})
+		}
+
+		pageIDs := strings.Split(string(content), "\n")
+		return m.scanDirectPages(pageIDs)
+	}
+
+	return m.scanDatabasePages()
+}
+
+func (m *LangModel) scanDirectPages(pageIDs []string) (chan []notion.Page, chan error) {
+	pagesChan := make(chan []notion.Page, 1)
+	errChan := make(chan error, 1)
+
+	for _, pageID := range pageIDs {
+		pageID = transformer.SimpleID(pageID)
+
+		if page, err := m.Client.FindPageByID(context.Background(), pageID); err == nil {
 			pagesChan <- []notion.Page{page}
 		} else {
 			errChan <- err
 		}
-
-		close(pagesChan)
-		return pagesChan, errChan
 	}
 
-	return m.scanDatabasePages()
+	close(pagesChan)
+	return pagesChan, errChan
 }
 
 func (m *LangModel) scanDatabasePages() (chan []notion.Page, chan error) {
@@ -220,6 +241,11 @@ func (m *LangModel) runLLMPage(page notion.Page) error {
 
 	t := transformer.New(markdown, &page, blocks, m.queryPool, nil)
 	content := t.Transform()
+
+	if len(content) < 300 { // TODO arbitrary chars threshold
+		log.Printf("Skip short content, id: %v, len: %v", page.ID, len(content))
+		return nil
+	}
 
 	req := openai.ChatCompletionRequest{
 		Model: openai.GPT3Dot5Turbo,
