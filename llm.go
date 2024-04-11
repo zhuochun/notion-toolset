@@ -135,6 +135,9 @@ func (m *LangModel) scanDirectPages(pageIDs []string) (chan []notion.Page, chan 
 	errChan := make(chan error, 1)
 
 	for _, pageID := range pageIDs {
+		if pageID == "" {
+			continue
+		}
 		pageID = transformer.SimpleID(pageID)
 
 		if page, err := m.Client.FindPageByID(context.Background(), pageID); err == nil {

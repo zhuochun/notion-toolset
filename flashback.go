@@ -94,7 +94,7 @@ func (f *Flashback) Run() error {
 		defer file.Close()
 
 		for n := range picked {
-			if _, err = file.WriteString(pages[n].ID); err != nil {
+			if _, err = file.WriteString(pages[n].ID + "\n"); err != nil {
 				log.Printf("Failed writing to file, err: %v", err)
 			}
 		}
