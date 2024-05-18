@@ -10,7 +10,8 @@ import (
 )
 
 type QueryBuilder struct {
-	Date  string
+	Date  string // default date or start date
+	Today string
 	Title string
 }
 

@@ -107,7 +107,8 @@ func (f *Flashback) GetPages(lookback time.Duration) ([]notion.Page, error) {
 	q := NewDatabaseQuery(f.Client, f.DatabaseID)
 
 	if err := q.SetQuery(f.DatabaseQuery, QueryBuilder{
-		Date: time.Now().Add(-lookback).Format(layoutDate),
+		Date:  time.Now().Add(-lookback).Format(layoutDate),
+		Today: time.Now().Format(layoutDate),
 	}); err != nil {
 		log.Panicf("Invalid query: %v, err: %v", f.DatabaseQuery, err)
 	}
