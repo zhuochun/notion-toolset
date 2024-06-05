@@ -46,15 +46,24 @@ func (f *Flashback) Run() error {
 	f.SetFlashbackPageID()
 
 	maxHours := int(time.Since(f.OldestTimestamp).Hours())
+	// use a random hour to lookback
 	lookbackHour := rand.Intn(maxHours)
-
 	pages, err := f.GetPages(time.Duration(lookbackHour) * time.Hour)
 	if err != nil {
 		return err
 	}
-
 	log.Printf("Lookback %v Hours/%v Day, Queried pages: %+v", lookbackHour, lookbackHour/24, len(pages))
-	if len(pages) < 1 {
+
+	if len(pages) < 1 { // try again with max hours
+		lookbackHour = maxHours
+		pages, err = f.GetPages(time.Duration(lookbackHour) * time.Hour)
+		if err != nil {
+			return err
+		}
+		log.Printf("Lookback (max) %v Hours/%v Day, Queried pages: %+v", lookbackHour, lookbackHour/24, len(pages))
+	}
+
+	if len(pages) < 1 { // give up
 		log.Printf("Skipped. no pages fetched")
 		return nil
 	}
