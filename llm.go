@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"html/template"
@@ -21,14 +22,20 @@ type LangModelConfig struct {
 	DatabaseID    string `yaml:"databaseID"`
 	DatabaseQuery string `yaml:"databaseQuery"`
 	LookbackDays  int    `yaml:"lookbackDays"` // additional date info
-	// Read from chain file instead of database, overwrite database configs above
+	// Read from a chain file instead of database, overwrite database configs above
+	// chain file is supported in flashback
 	ChainFile string `yaml:"chainFile"`
-	// LLM prompt message
-	Prompt        string `yaml:"prompt"`
-	Model         string `yaml:"model"`
-	RespTextBlock string `yaml:"respTextBlock"` // Format https://pkg.go.dev/github.com/dstotijn/go-notion#ParagraphBlock
-	// tuning https://developers.notion.com/reference/request-limits
-	TaskSpeed float64 `yaml:"taskSpeed"`
+	// LLM config prompt message
+	Prompt      string   `yaml:"prompt"`
+	Model       string   `yaml:"model"`       // optional, default to GPT3-Turbo
+	Temperature *float32 `yaml:"temperature"` // optional
+	// LLM response format
+	// - format follow https://pkg.go.dev/github.com/dstotijn/go-notion#ParagraphBlock
+	// - when using JSON mode, always instruct the model to produce JSON via some message in the conversation
+	RespJSON      bool   `yaml:"respJSON"`      // optional, default to false
+	RespTextBlock string `yaml:"respTextBlock"` // mandatory for JSON model, else optional and default convert to paragraphs
+	// Tuning https://developers.notion.com/reference/request-limits
+	TaskSpeed float64 `yaml:"taskSpeed"` // optional
 	// skip processing a pages if chars is <min or >max thresholds
 	PageMinChars int `yaml:"pageMinChars"`
 	PageMaxChars int `yaml:"pageMaxChars"`
@@ -272,8 +279,18 @@ func (m *LangModel) runLLMPage(page notion.Page) error {
 		},
 	}
 
-	if m.Model != "" { // Use user requested model
+	if m.Model != "" { // Use user config model
 		req.Model = m.Model
+	}
+
+	if m.Temperature != nil { // Use user config temperature
+		req.Temperature = *m.Temperature
+	}
+
+	if m.RespJSON { // Experimental
+		req.ResponseFormat = &openai.ChatCompletionResponseFormat{
+			Type: openai.ChatCompletionResponseFormatTypeJSONObject,
+		}
 	}
 
 	resp, err := m.OpenaiClient.CreateChatCompletion(context.Background(), req)
@@ -281,11 +298,15 @@ func (m *LangModel) runLLMPage(page notion.Page) error {
 		return fmt.Errorf("openai chat err: %v", err)
 	}
 
-	block, err := m.WriteBlock(page, resp.Choices[0].Message.Content)
+	block := notion.BlockChildrenResponse{}
+	if m.RespJSON {
+		block, err = m.WriteJSON(page, resp.Choices[0].Message.Content)
+	} else {
+		block, err = m.WriteBlock(page, resp.Choices[0].Message.Content)
+	}
 	if err != nil {
 		return err
 	}
-
 	if len(block.Results) > 0 {
 		log.Printf("Append block child %v", block.Results[0].ID())
 	}
@@ -318,6 +339,21 @@ func (m *LangModel) WriteBlock(page notion.Page, content string) (notion.BlockCh
 				},
 			})
 		}
+	}
+
+	return w.Do(context.TODO())
+}
+
+func (m *LangModel) WriteJSON(page notion.Page, content string) (notion.BlockChildrenResponse, error) {
+	w := NewAppendBlock(m.Client, page.ID)
+
+	contentJSON := map[string]interface{}{}
+	if err := json.Unmarshal([]byte(content), &contentJSON); err != nil {
+		return notion.BlockChildrenResponse{}, fmt.Errorf("unmarshal content: %w", err)
+	}
+
+	if err := w.AddBlocks("llmJSON", m.RespTextBlock, contentJSON); err != nil {
+		return notion.BlockChildrenResponse{}, err
 	}
 
 	return w.Do(context.TODO())

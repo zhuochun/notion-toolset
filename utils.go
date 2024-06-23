@@ -65,10 +65,31 @@ func (a *AppendBlock) AddParagraph(name, s string, builder interface{}) error {
 
 	block := &notion.ParagraphBlock{}
 	if err := json.Unmarshal(rawBlock, block); err != nil {
-		return fmt.Errorf("unmarshal Block: %w", err)
+		return fmt.Errorf("unmarshal block: %w", err)
 	}
 
 	a.Blocks = append(a.Blocks, block)
+	return nil
+}
+
+func (a *AppendBlock) AddBlocks(name, s string, builder interface{}) error {
+	if s == "" {
+		return fmt.Errorf("empty block text: %s", name)
+	}
+
+	rawBlocks, err := Tmpl(name, s, builder)
+	if err != nil {
+		return err
+	}
+
+	blocks := []notion.ParagraphBlock{}
+	if err := json.Unmarshal(rawBlocks, &blocks); err != nil {
+		return fmt.Errorf("unmarshal blocks: %w", err)
+	}
+
+	for _, b := range blocks {
+		a.Blocks = append(a.Blocks, b)
+	}
 	return nil
 }
 

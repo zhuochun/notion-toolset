@@ -1,0 +1,42 @@
+llm:
+    chainFile: "flashchain.txt"
+    pageMinChars: 300
+    prompt: >
+      You are an assistant helping summarize a document. Respond in JSON format.
+
+      - Language: The identified language of the document
+      - Summary: One-paragaph summary of the document in the identified language
+      - KeyPoints: An exhaustive array of key points in the identified language
+      - Conclusions: An array of conclusions and insights in the identified language
+      - Frameworks: An array of frameworks, mental models, or best practices extracted or derived in the identified language
+    respJSON: true
+    respTextBlock: >
+      [
+        {
+          "rich_text": [ { "text": { "content": "{{.Summary}}" } } ]
+        }
+        ,{
+          "rich_text": [ { "text": { "content": "Key Points" } } ]
+        }
+        {{range .KeyPoints}}
+        ,{
+          "rich_text": [ { "text": { "content": "{{.}}" } } ]
+        }
+        {{end}}
+        ,{
+          "rich_text": [ { "text": { "content": "Conclusions" } } ]
+        }
+        {{range .Conclusions}}
+        ,{
+          "rich_text": [ { "text": { "content": "{{.}}" } } ]
+        }
+        {{end}}
+        ,{
+          "rich_text": [ { "text": { "content": "Frameworks" } } ]
+        }
+        {{range .Frameworks}}
+        ,{
+          "rich_text": [ { "text": { "content": "{{.}}" } } ]
+        }
+        {{end}}
+      ]
