@@ -31,6 +31,48 @@ components:
               type: string
             ends_with:
               type: string
+        timestamp:
+          type: string
+          description: A constant string representing the type of timestamp to use as a filter.
+          enum:
+            - created_time
+            - last_edited_time
+        created_time:
+          type: object
+          properties:
+            equals:
+              type: string
+              format: date
+            before:
+              type: string
+              format: date
+            after:
+              type: string
+              format: date
+            on_or_before:
+              type: string
+              format: date
+            on_or_after:
+              type: string
+              format: date
+        last_edited_time:
+          type: object
+          properties:
+            equals:
+              type: string
+              format: date
+            before:
+              type: string
+              format: date
+            after:
+              type: string
+              format: date
+            on_or_before:
+              type: string
+              format: date
+            on_or_after:
+              type: string
+              format: date
         rich_text:
           type: object
           properties:
@@ -304,6 +346,7 @@ paths:
       summary: Retrieve block children
       description: ""
       operationId: get-block-children
+      x-openai-isConsequential: false
       parameters:
         - name: Notion-Version
           in: header
@@ -376,6 +419,7 @@ paths:
       summary: Retrieve a block
       description: ""
       operationId: retrieve-a-block
+      x-openai-isConsequential: false
       parameters:
         - name: Notion-Version
           in: header
@@ -455,6 +499,7 @@ paths:
       summary: Retrieve a page
       description: ""
       operationId: retrieve-a-page
+      x-openai-isConsequential: false
       parameters:
         - name: Notion-Version
           in: header
@@ -662,6 +707,7 @@ paths:
       summary: Retrieve a database
       description: ""
       operationId: retrieve-a-database
+      x-openai-isConsequential: false
       parameters:
         - name: Notion-Version
           in: header
@@ -676,196 +722,7 @@ paths:
           schema:
             type: string
           required: true
-      responses:
-        "200":
-          description: "200"
-          content:
-            application/json:
-              examples:
-                Result:
-                  value: |-
-                    {
-                        "object": "database",
-                        "id": "bc1211ca-e3f1-4939-ae34-5260b16f627c",
-                        "created_time": "2021-07-08T23:50:00.000Z",
-                        "last_edited_time": "2021-07-08T23:50:00.000Z",
-                        "icon": {
-                            "type": "emoji",
-                            "emoji": "🎉"
-                        },
-                        "cover": {
-                            "type": "external",
-                            "external": {
-                                "url": "https://website.domain/images/image.png"
-                            }
-                        },
-                        "url": "https://www.notion.so/bc1211cae3f14939ae34260b16f627c",
-                        "title": [
-                            {
-                                "type": "text",
-                                "text": {
-                                    "content": "Grocery List",
-                                    "link": null
-                                },
-                                "annotations": {
-                                    "bold": false,
-                                    "italic": false,
-                                    "strikethrough": false,
-                                    "underline": false,
-                                    "code": false,
-                                    "color": "default"
-                                },
-                                "plain_text": "Grocery List",
-                                "href": null
-                            }
-                        ],
-                        "description": [
-                            {
-                                "type": "text",
-                                "text": {
-                                    "content": "Grocery list for just kale 🥬",
-                                    "link": null
-                                },
-                                "annotations": {
-                                    "bold": false,
-                                    "italic": false,
-                                    "strikethrough": false,
-                                    "underline": false,
-                                    "code": false,
-                                    "color": "default"
-                                },
-                                "plain_text": "Grocery list for just kale 🥬",
-                                "href": null
-                            }
-                        ],
-                        "properties": {
-                            "+1": {
-                                "id": "Wp%3DC",
-                                "name": "+1",
-                                "type": "people",
-                                "people": {}
-                            },
-                            "In stock": {
-                                "id": "fk%5EY",
-                                "name": "In stock",
-                                "type": "checkbox",
-                                "checkbox": {}
-                            },
-                            "Price": {
-                                "id": "evWq",
-                                "name": "Price",
-                                "type": "number",
-                                "number": {
-                                    "format": "dollar"
-                                }
-                            },
-                            "Description": {
-                                "id": "V}lX",
-                                "name": "Description",
-                                "type": "rich_text",
-                                "rich_text": {}
-                            },
-                            "Last ordered": {
-                                "id": "eVnV",
-                                "name": "Last ordered",
-                                "type": "date",
-                                "date": {}
-                            },
-                            "Meals": {
-                                "id": "%7DWA~",
-                                "name": "Meals",
-                                "type": "relation",
-                                "relation": {
-                                    "database_id": "668d797c-76fa-4934-9b05-ad288df2d136",
-                                    "synced_property_name": "Related to Grocery List (Meals)"
-                                }
-                            },
-                            "Number of meals": {
-                                "id": "Z\\Eh",
-                                "name": "Number of meals",
-                                "type": "rollup",
-                                "rollup": {
-                                    "rollup_property_name": "Name",
-                                    "relation_property_name": "Meals",
-                                    "rollup_property_id": "title",
-                                    "relation_property_id": "mxp^",
-                                    "function": "count"
-                                }
-                            },
-                            "Store availability": {
-                                "id": "s}Kq",
-                                "name": "Store availability",
-                                "type": "multi_select",
-                                "multi_select": {
-                                    "options": [
-                                        {
-                                            "id": "cb79b393-d1c1-4528-b517-c450859de766",
-                                            "name": "Duc Loi Market",
-                                            "color": "blue"
-                                        },
-                                        {
-                                            "id": "58aae162-75d4-403b-a793-3bc7308e4cd2",
-                                            "name": "Rainbow Grocery",
-                                            "color": "gray"
-                                        },
-                                        {
-                                            "id": "22d0f199-babc-44ff-bd80-a9eae3e3fcbf",
-                                            "name": "Nijiya Market",
-                                            "color": "purple"
-                                        },
-                                        {
-                                            "id": "0d069987-ffb0-4347-bde2-8e4068003dbc",
-                                            "name": "Gus's Community Market",
-                                            "color": "yellow"
-                                        }
-                                    ]
-                                }
-                            },
-                            "Photo": {
-                                "id": "yfiK",
-                                "name": "Photo",
-                                "type": "files",
-                                "files": {}
-                            },
-                            "Food group": {
-                                "id": "CM%3EH",
-                                "name": "Food group",
-                                "type": "select",
-                                "select": {
-                                    "options": [
-                                        {
-                                            "id": "6d4523fa-88cb-4ffd-9364-1e39d0f4e566",
-                                            "name": "🥦Vegetable",
-                                            "color": "green"
-                                        },
-                                        {
-                                            "id": "268d7e75-de8f-4c4b-8b9d-de0f97021833",
-                                            "name": "🍎Fruit",
-                                            "color": "red"
-                                        },
-                                        {
-                                            "id": "1b234a00-dc97-489c-b987-829264cfdfef",
-                                            "name": "💪Protein",
-                                            "color": "yellow"
-                                        }
-                                    ]
-                                }
-                            },
-                            "Name": {
-                                "id": "title",
-                                "name": "Name",
-                                "type": "title",
-                                "title": {}
-                            }
-                        },
-                        "parent": {
-                            "type": "page_id",
-                            "page_id": "98ad959b-2b6a-4774-80ee-00246fb0ea9b"
-                        },
-                        "archived": false,
-                        "is_inline": false,
-                        "public_url": null
-                    }
+      responses: {}
       deprecated: false
       security: []
   /pages/{page_id}/properties/{property_id}:
@@ -873,6 +730,7 @@ paths:
       summary: Retrieve a page property item
       description: ""
       operationId: retrieve-a-page-property
+      x-openai-isConsequential: false
       parameters:
         - name: Notion-Version
           in: header
@@ -904,149 +762,7 @@ paths:
           description: For paginated properties.
           schema:
             type: string
-      responses:
-        "200":
-          description: "200"
-          content:
-            application/json:
-              examples:
-                Number Property Item:
-                  value: |-
-                    {
-                      "object": "property_item",
-                      "id" "kjPO",
-                      "type": "number",
-                      "number": 2
-                    }
-                Result:
-                  value: >-
-                    {
-                        "object": "list",
-                        "results": [
-                            {
-                                "object": "property_item",
-                                "id" "kjPO",
-                                "type": "rich_text",
-                                "rich_text": {
-                                    "type": "text",
-                                    "text": {
-                                        "content": "Avocado ",
-                                        "link": null
-                                    },
-                                    "annotations": {
-                                        "bold": false,
-                                        "italic": false,
-                                        "strikethrough": false,
-                                        "underline": false,
-                                        "code": false,
-                                        "color": "default"
-                                    },
-                                    "plain_text": "Avocado ",
-                                    "href": null
-                                }
-                            },
-                            {
-                                "object": "property_item",
-                                "id" "ijPO",
-                                "type": "rich_text",
-                                "rich_text": {
-                                    "type": "mention",
-                                    "mention": {
-                                        "type": "page",
-                                        "page": {
-                                            "id": "41117fd7-69a5-4694-bc07-c1e3a682c857"
-                                        }
-                                    },
-                                    "annotations": {
-                                        "bold": false,
-                                        "italic": false,
-                                        "strikethrough": false,
-                                        "underline": false,
-                                        "code": false,
-                                        "color": "default"
-                                    },
-                                    "plain_text": "Lemons",
-                                    "href": "http://notion.so/41117fd769a54694bc07c1e3a682c857"
-                                }
-                            },
-                            {
-                                "object": "property_item",
-                                "id" "kjPO",
-                                "type": "rich_text",
-                                "rich_text": {
-                                    "type": "text",
-                                    "text": {
-                                        "content": " Tomato ",
-                                        "link": null
-                                    },
-                                    "annotations": {
-                                        "bold": false,
-                                        "italic": false,
-                                        "strikethrough": false,
-                                        "underline": false,
-                                        "code": false,
-                                        "color": "default"
-                                    },
-                                    "plain_text": " Tomato ",
-                                    "href": null
-                                }
-                            },
-                    ...
-                        ],
-                        "next_cursor": "some-next-cursor-value",
-                        "has_more": true,
-                    		"next_url": "http://api.notion.com/v1/pages/0e5235bf86aa4efb93aa772cce7eab71/properties/NVv^?start_cursor=some-next-cursor-value&page_size=25",
-                        "property_item": {
-                          "id": "NVv^",
-                          "next_url": null,
-                          "type": "rich_text",
-                          "rich_text": {}
-                        }
-                    }
-                Rollup List Property Item:
-                  value: >-
-                    {
-                        "object": "list",
-                        "results": [
-                            {
-                                "object": "property_item",
-                              	"id": "dj2l",
-                                "type": "relation",
-                                "relation": {
-                                    "id": "83f92c9d-523d-466e-8c1f-9bc2c25a99fe"
-                                }
-                            },
-                            {
-                                "object": "property_item",
-                              	"id": "dj2l",
-                                "type": "relation",
-                                "relation": {
-                                    "id": "45cfb825-3463-4891-8932-7e6d8c170630"
-                                }
-                            },
-                            {
-                                "object": "property_item",
-                              	"id": "dj2l",
-                                "type": "relation",
-                                "relation": {
-                                    "id": "1688be1a-a197-4f2a-9688-e528c4b56d94"
-                                }
-                            }
-                        ],
-                        "next_cursor": "some-next-cursor-value",
-                        "has_more": true,
-                    		"property_item": {
-                          "id": "y}~p",
-                          "next_url": "http://api.notion.com/v1/pages/0e5235bf86aa4efb93aa772cce7eab71/properties/y%7D~p?start_cursor=1QaTunT5&page_size=25",
-                          "type": "rollup",
-                          "rollup": {
-                            "function": "sum",
-                            "type": "incomplete",
-                            "incomplete": {}
-                          }
-                        }
-                        "type": "property_item"
-                    }
+      responses: {}
       deprecated: false
       security: []
   /comments:
@@ -1054,6 +770,7 @@ paths:
       summary: Retrieve comments
       description: Retrieves a list of un-resolved [Comment objects](ref:comment-object) from a page or block.
       operationId: retrieve-comments
+      x-openai-isConsequential: false
       parameters:
         - name: Notion-Version
           in: header
@@ -1080,57 +797,7 @@ paths:
           schema:
             type: integer
             format: int32
-      responses:
-        "200":
-          description: "200"
-          content:
-            application/json:
-              examples:
-                OK:
-                  value: |-
-                    {
-                        "object": "list",
-                        "results": [
-                            {
-                                "object": "comment",
-                                "id": "94cc56ab-9f02-409d-9f99-1037e9fe502f",
-                                "parent": {
-                                    "type": "page_id",
-                                    "page_id": "5c6a2821-6bb1-4a7e-b6e1-c50111515c3d"
-                                },
-                                "discussion_id": "f1407351-36f5-4c49-a13c-49f8ba11776d",
-                                "created_time": "2022-07-15T16:52:00.000Z",
-                                "last_edited_time": "2022-07-15T19:16:00.000Z",
-                                "created_by": {
-                                    "object": "user",
-                                    "id": "9b15170a-9941-4297-8ee6-83fa7649a87a"
-                                },
-                                "rich_text": [
-                                    {
-                                        "type": "text",
-                                        "text": {
-                                            "content": "Single comment",
-                                            "link": null
-                                        },
-                                        "annotations": {
-                                            "bold": false,
-                                            "italic": false,
-                                            "strikethrough": false,
-                                            "underline": false,
-                                            "code": false,
-                                            "color": "default"
-                                        },
-                                        "plain_text": "Single comment",
-                                        "href": null
-                                    }
-                                ]
-                            }
-                        ],
-                        "next_cursor": null,
-                        "has_more": false,
-                        "type": "comment",
-                        "comment": {}
-                    }
+      responses: {}
       deprecated: false
       security: []
     post:
@@ -1178,47 +845,6 @@ paths:
                           content:
                             type: string
                             description: The content of the comment
-      responses:
-        "200":
-          description: "200"
-          content:
-            application/json:
-              examples:
-                Result:
-                  value: |-
-                    {
-                        "object": "comment",
-                        "id": "b52b8ed6-e029-4707-a671-832549c09de3",
-                        "parent": {
-                            "type": "page_id",
-                            "page_id": "5c6a2821-6bb1-4a7e-b6e1-c50111515c3d"
-                        },
-                        "discussion_id": "f1407351-36f5-4c49-a13c-49f8ba11776d",
-                        "created_time": "2022-07-15T20:53:00.000Z",
-                        "last_edited_time": "2022-07-15T20:53:00.000Z",
-                        "created_by": {
-                            "object": "user",
-                            "id": "067dee40-6ebd-496f-b446-093c715fb5ec"
-                        },
-                        "rich_text": [
-                            {
-                                "type": "text",
-                                "text": {
-                                    "content": "Hello world",
-                                    "link": null
-                                },
-                                "annotations": {
-                                    "bold": false,
-                                    "italic": false,
-                                    "strikethrough": false,
-                                    "underline": false,
-                                    "code": false,
-                                    "color": "default"
-                                },
-                                "plain_text": "Hello world",
-                                "href": null
-                            }
-                        ]
-                    }
+      responses: {}
       deprecated: false
       security: []
