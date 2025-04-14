@@ -208,6 +208,130 @@ components:
           items:
             $ref: '#/components/schemas/DatabaseQueryFilterCondition'
           maxItems: 10
+    RichTextObjectInput:
+      type: object
+      description: Input structure for Rich Text objects.
+      properties:
+        type:
+          type: string
+          enum: [ text ]
+          default: text
+        text:
+          type: object
+          properties:
+            content:
+              type: string
+            link:
+              type: object
+              nullable: true
+              properties:
+                url:
+                  type: string
+          required:
+            - content
+        annotations:
+          type: object
+          properties:
+            bold:
+              type: boolean
+            italic:
+              type: boolean
+            strikethrough:
+              type: boolean
+            underline:
+              type: boolean
+            code:
+              type: boolean
+            color:
+              type: string
+              enum:
+                - default
+                - gray
+                - brown
+                - orange
+                - yellow
+                - green
+                - blue
+                - purple
+                - pink
+                - red
+                - gray_background
+                - brown_background
+                - orange_background
+                - yellow_background
+                - green_background
+                - blue_background
+                - purple_background
+                - pink_background
+                - red_background
+          additionalProperties: false
+      required:
+        - text
+    BlockObject:
+      type: object
+      description: Represents a Notion block object. Only specific types are supported for creation/update via this schema.
+      properties:
+        object:
+          type: string
+          enum: [ block ]
+          default: block
+        type:
+          type: string
+          description: The type of the block.
+          enum:
+            - heading_1
+            - heading_2
+            - heading_3
+            - numbered_list_item
+            - paragraph
+            - to_do
+        heading_1:
+          type: object
+          properties:
+            rich_text:
+              type: array
+              items:
+                $ref: '#/components/schemas/RichTextObjectInput'
+        heading_2:
+          type: object
+          properties:
+            rich_text:
+              type: array
+              items:
+                $ref: '#/components/schemas/RichTextObjectInput'
+        heading_3:
+          type: object
+          properties:
+            rich_text:
+              type: array
+              items:
+                $ref: '#/components/schemas/RichTextObjectInput'
+        numbered_list_item:
+          type: object
+          properties:
+            rich_text:
+              type: array
+              items:
+                $ref: '#/components/schemas/RichTextObjectInput'
+        paragraph:
+          type: object
+          properties:
+            rich_text:
+              type: array
+              items:
+                $ref: '#/components/schemas/RichTextObjectInput'
+        to_do:
+          type: object
+          properties:
+            rich_text:
+              type: array
+              items:
+                $ref: '#/components/schemas/RichTextObjectInput'
+            checked:
+              type: boolean
+              default: false
+      required:
+        - type
 security:
   - bearerAuth: []
 paths:
@@ -407,7 +531,7 @@ paths:
                   type: array
                   description: Child content to append to a container block as an array of [block objects](ref:block)
                   items:
-                    type: object
+                    $ref: '#/components/schemas/BlockObject'
                 after:
                   type: string
                   description: The ID of the existing block that the new block should be appended after.
@@ -688,7 +812,7 @@ paths:
                   description: The content to be rendered on the new page, represented as an array of [block
                     objects](https://developers.notion.com/reference/block).
                   items:
-                    type: string
+                    $ref: '#/components/schemas/BlockObject'
                 icon:
                   type: string
                   description: The icon of the new page. Either an [emoji object](https://developers.notion.com/reference/emoji-object) or
