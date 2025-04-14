@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
-  title: Notion API
-  version: "1"
+  title: Notion API (Bicrement)
+  version: 1.2.0
 servers:
   - url: https://api.notion.com/v1
 components:
@@ -338,8 +338,8 @@ paths:
   /databases/{database_id}/query:
     post:
       summary: Query a database
-      description: ""
-      operationId: post-database-query
+      description: "Retrieves a list of pages contained in the database, filtered and ordered according to the filter conditions and sort criteria provided in the request. The response may also be limited by pagination parameters."
+      operationId: queryDatabase
       x-openai-isConsequential: false
       parameters:
         - name: Notion-Version
@@ -400,12 +400,11 @@ paths:
                   type: boolean
       responses: {}
       deprecated: false
-      security: []
   /search:
     post:
       summary: Search by title
-      description: ""
-      operationId: post-search
+      description: "Searches all pages and child pages that are shared with the integration. The results may be filtered by the object type (database or page) and sorted based on the last edited time."
+      operationId: searchContent
       x-openai-isConsequential: false
       parameters:
         - name: Notion-Version
@@ -464,12 +463,11 @@ paths:
                   format: int32
       responses: {}
       deprecated: false
-      security: []
   /blocks/{block_id}/children:
     get:
-      summary: Retrieve block children
-      description: ""
-      operationId: get-block-children
+      summary: Retrieve page or block children
+      description: "Retrieves a paginated list of child block objects contained in the specified page or block."
+      operationId: getBlockChildren
       x-openai-isConsequential: false
       parameters:
         - name: Notion-Version
@@ -481,7 +479,7 @@ paths:
           constant: 2022-06-28
         - name: block_id
           in: path
-          description: Identifier for a [block](ref:block)
+          description: Identifier for a [block](ref:block). Also accepts a [page](ref:page) ID.
           schema:
             type: string
           required: true
@@ -500,11 +498,10 @@ paths:
             default: 100
       responses: {}
       deprecated: false
-      security: []
     patch:
       summary: Append block children
-      description: ""
-      operationId: patch-block-children
+      description: "Creates and appends new children blocks to the specified parent block."
+      operationId: appendBlockChildren
       parameters:
         - name: Notion-Version
           in: header
@@ -537,12 +534,11 @@ paths:
                   description: The ID of the existing block that the new block should be appended after.
       responses: {}
       deprecated: false
-      security: []
   /blocks/{block_id}:
     get:
       summary: Retrieve a block
-      description: ""
-      operationId: retrieve-a-block
+      description: "Retrieves a specific block object using the block ID."
+      operationId: getBlock
       x-openai-isConsequential: false
       parameters:
         - name: Notion-Version
@@ -560,11 +556,10 @@ paths:
           required: true
       responses: {}
       deprecated: false
-      security: []
     patch:
       summary: Update a block
-      description: ""
-      operationId: update-a-block
+      description: "Updates the content for the specified block_id based on the block type. Supports updating text content and checkbox status."
+      operationId: updateBlock
       parameters:
         - name: Notion-Version
           in: header
@@ -596,11 +591,10 @@ paths:
                   default: true
       responses: {}
       deprecated: false
-      security: []
     delete:
       summary: Delete a block
-      description: ""
-      operationId: delete-a-block
+      description: "Sets the block's `archived` property to `true`, effectively deleting it."
+      operationId: deleteBlock
       parameters:
         - name: Notion-Version
           in: header
@@ -617,12 +611,11 @@ paths:
           required: true
       responses: {}
       deprecated: false
-      security: []
   /pages/{page_id}:
     get:
-      summary: Retrieve a page
-      description: ""
-      operationId: retrieve-a-page
+      summary: Retrieve page properties
+      description: "Retrieves page property values for the specified page. Properties can be filtered by property ID."
+      operationId: getPageProperties
       x-openai-isConsequential: false
       parameters:
         - name: Notion-Version
@@ -647,11 +640,10 @@ paths:
             type: string
       responses: {}
       deprecated: false
-      security: []
     patch:
       summary: Update page properties
-      description: ""
-      operationId: patch-page
+      description: "Updates page property values for the specified page. Properties not included in the request remain unchanged. Can also archive/unarchive the page."
+      operationId: updatePageProperties
       parameters:
         - name: Notion-Version
           in: header
@@ -751,12 +743,11 @@ paths:
                   additionalProperties: false
       responses: {}
       deprecated: false
-      security: []
   /pages:
     post:
       summary: Create a page
-      description: ""
-      operationId: post-page
+      description: "Creates a new page in the specified parent page or database. Allows setting properties, content (as child blocks), icon, and cover."
+      operationId: createPage
       parameters:
         - name: Notion-Version
           in: header
@@ -825,12 +816,11 @@ paths:
                   format: json
       responses: {}
       deprecated: false
-      security: []
   /databases/{database_id}:
     get:
-      summary: Retrieve a database
-      description: ""
-      operationId: retrieve-a-database
+      summary: Retrieve database properties
+      description: "Retrieves the database object for the specified database ID, including its properties schema."
+      operationId: getDatabaseProperties
       x-openai-isConsequential: false
       parameters:
         - name: Notion-Version
@@ -848,12 +838,11 @@ paths:
           required: true
       responses: {}
       deprecated: false
-      security: []
   /pages/{page_id}/properties/{property_id}:
     get:
       summary: Retrieve a page property item
-      description: ""
-      operationId: retrieve-a-page-property
+      description: "Retrieves a specific page property item, which represents the value of a property for a page."
+      operationId: getPagePropertyItem
       x-openai-isConsequential: false
       parameters:
         - name: Notion-Version
@@ -888,12 +877,11 @@ paths:
             type: string
       responses: {}
       deprecated: false
-      security: []
   /comments:
     get:
       summary: Retrieve comments
-      description: Retrieves a list of un-resolved [Comment objects](ref:comment-object) from a page or block.
-      operationId: retrieve-comments
+      description: "Retrieves a paginated list of un-resolved Comment objects from a specified page or block."
+      operationId: getComments
       x-openai-isConsequential: false
       parameters:
         - name: Notion-Version
@@ -923,11 +911,10 @@ paths:
             format: int32
       responses: {}
       deprecated: false
-      security: []
     post:
       summary: Create comment
-      description: Creates a comment in a page or existing discussion thread.
-      operationId: create-a-comment
+      description: "Creates a new comment in a page or adds to an existing discussion thread."
+      operationId: createComment
       parameters:
         - name: Notion-Version
           in: header
@@ -971,4 +958,3 @@ paths:
                             description: The content of the comment
       responses: {}
       deprecated: false
-      security: []
