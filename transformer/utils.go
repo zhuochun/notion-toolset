@@ -24,11 +24,11 @@ func SimpleAliasOrID(id string, aliasMap *sync.Map) string {
 func GetPageTitle(page notion.Page) (string, error) {
 	switch props := page.Properties.(type) {
 	case notion.PageProperties:
-		return concatRichText(props.Title.Title), nil
+		return ConcatRichText(props.Title.Title), nil
 	case notion.DatabasePageProperties:
 		for _, prop := range props {
 			if prop.ID == "title" {
-				return concatRichText(prop.Title), nil
+				return ConcatRichText(prop.Title), nil
 			}
 		}
 		return "", fmt.Errorf("no title properties in database page properties")
@@ -37,7 +37,9 @@ func GetPageTitle(page notion.Page) (string, error) {
 	}
 }
 
-func concatRichText(blocks []notion.RichText) string {
+// ConcatRichText joins the plain text of a slice of RichText into a single
+// string. Empty slices result in an empty string.
+func ConcatRichText(blocks []notion.RichText) string {
 	if len(blocks) == 0 {
 		return ""
 	} else if len(blocks) == 1 {

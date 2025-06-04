@@ -12,9 +12,13 @@ import (
 )
 
 type DuplicateCheckerConfig struct {
-	DatabaseID             string   `yaml:"databaseID"`
-	DatabaseQuery          string   `yaml:"databaseQuery"`
-	CheckProperties        []string `yaml:"checkProperties"` // TODO Check by specific properties
+	DatabaseID    string `yaml:"databaseID"`
+	DatabaseQuery string `yaml:"databaseQuery"`
+	// CheckProperties specifies property names used to detect duplicates.
+	// A page is considered a duplicate when any of the listed property
+	// values matches another page's value (OR semantics). If the slice is
+	// empty, page titles are used. Empty or nil property values are ignored.
+	CheckProperties        []string `yaml:"checkProperties"`
 	DuplicateDumpID        string   `yaml:"duplicateDumpID"`
 	DuplicateDumpTextBlock string   `yaml:"duplicateDumpTextBlock"` // Format https://pkg.go.dev/github.com/dstotijn/go-notion#ParagraphBlock
 	// DuplicateDumpBlock string   `yaml:"duplicateDumpBlock"` // DEPRECATED (2023-12) use duplicateDumpTextBlock
@@ -42,17 +46,18 @@ func (d *DuplicateChecker) Run() error {
 		for _, page := range pages {
 			pageNum += 1
 
-			title, err := transformer.GetPageTitle(page)
-			if err != nil {
-				log.Printf("Err pageID: %v, err: %v", page.ID, err)
+			keys := d.pageKeys(page)
+			if len(keys) == 0 {
 				continue
 			}
 
-			if id, ok := set[title]; ok {
-				d.WriteBlock(page.ID)
-				d.WriteBlock(id)
-			} else {
-				set[title] = page.ID
+			for _, key := range keys {
+				if id, ok := set[key]; ok {
+					d.WriteBlock(page.ID)
+					d.WriteBlock(id)
+				} else {
+					set[key] = page.ID
+				}
 			}
 
 			if d.DebugMode && pageNum%500 == 0 {
@@ -60,7 +65,7 @@ func (d *DuplicateChecker) Run() error {
 			}
 		}
 	}
-	log.Printf("Scanned pages: %v, unique: %v", pageNum, len(set))
+	log.Printf("Scanned pages: %v, unique keys: %v", pageNum, len(set))
 
 	select {
 	case err := <-errChan:
@@ -96,4 +101,64 @@ func (d *DuplicateChecker) WriteBlock(pageID string) (notion.BlockChildrenRespon
 	}
 
 	return w.Do(context.TODO())
+}
+
+// pageKeys returns the set of keys for duplicate detection. When no
+// CheckProperties are configured, the page title is used. Keys with empty
+// values are omitted.
+func (d *DuplicateChecker) pageKeys(page notion.Page) []string {
+	if len(d.CheckProperties) == 0 {
+		title, err := transformer.GetPageTitle(page)
+		if err != nil {
+			log.Printf("Err pageID: %v, err: %v", page.ID, err)
+			return nil
+		}
+		if title == "" {
+			return nil
+		}
+		return []string{"title=" + title}
+	}
+
+	props, ok := page.Properties.(notion.DatabasePageProperties)
+	if !ok {
+		title, err := transformer.GetPageTitle(page)
+		if err != nil {
+			log.Printf("Err pageID: %v, err: %v", page.ID, err)
+			return nil
+		}
+		if title == "" {
+			return nil
+		}
+		return []string{"title=" + title}
+	}
+
+	keys := []string{}
+	for _, name := range d.CheckProperties {
+		prop, ok := props[name]
+		if !ok {
+			continue
+		}
+		val := stringifyDBProp(prop)
+		if val != "" {
+			keys = append(keys, name+"="+val)
+		}
+	}
+	return keys
+}
+
+// stringifyDBProp converts a notion.DatabasePageProperty into a human readable
+// value used for duplicate comparison. Unsupported or empty values result in an
+// empty string.
+func stringifyDBProp(prop notion.DatabasePageProperty) string {
+	switch prop.Type {
+	case notion.DBPropTypeTitle:
+		return transformer.ConcatRichText(prop.Title)
+	case notion.DBPropTypeRichText:
+		return transformer.ConcatRichText(prop.RichText)
+	case notion.DBPropTypeURL:
+		if prop.URL != nil {
+			return *prop.URL
+		}
+	}
+	return ""
 }
