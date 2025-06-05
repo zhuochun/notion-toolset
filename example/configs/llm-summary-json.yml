@@ -1,6 +1,7 @@
 llm:
     chainFile: "flashchain.txt"
     pageMinChars: 300
+    groupExec: true
     prompt: >
       You are an assistant helping summarize a document. Respond in JSON format.
 

@@ -25,6 +25,8 @@ type LangModelConfig struct {
 	// Read from a chain file instead of database, overwrite database configs above
 	// chain file is supported in flashback
 	ChainFile string `yaml:"chainFile"`
+	// Scan all pages then run a single LLM with all page contents
+	GroupExec bool `yaml:"groupExec"`
 	// LLM config prompt message
 	Prompt      string   `yaml:"prompt"`
 	Model       string   `yaml:"model"`       // optional, default to GPT3-Turbo
@@ -78,6 +80,10 @@ func (m *LangModel) Validate() error {
 }
 
 func (m *LangModel) Run() error {
+	if m.GroupExec {
+		return m.runLLMGroup()
+	}
+
 	m.queryLimiter = rate.NewLimiter(rate.Limit(m.TaskSpeed), int(m.TaskSpeed))
 
 	// workers to process LLM prompt per page
@@ -240,6 +246,79 @@ func (m *LangModel) StartLLMTasker(wg *sync.WaitGroup, size int) chan notion.Pag
 	return taskPool
 }
 
+func (m *LangModel) runLLMGroup() error {
+	m.queryLimiter = rate.NewLimiter(rate.Limit(m.TaskSpeed), int(m.TaskSpeed))
+
+	// workers to query content of notion blocks
+	queryWg := new(sync.WaitGroup)
+	m.queryPool = m.StartQuerier(queryWg, int(m.TaskSpeed))
+
+	pagesChan, errChan := m.ScanPages()
+	pages := []notion.Page{}
+	for ps := range pagesChan {
+		pages = append(pages, ps...)
+	}
+	log.Printf("Scanned pages: %v", len(pages))
+
+	select {
+	case err := <-errChan:
+		if err != nil {
+			return err
+		}
+	default:
+	}
+
+	var contents []string
+	for _, page := range pages {
+		blocks, err := m.QueryBlocks(page.ID)
+		if err != nil {
+			return fmt.Errorf("query block id: %v, err: %v", page.ID, err)
+		}
+
+		markdown := transformer.MarkdownConfig{
+			NoAlias:        true,
+			NoFrontMatters: true,
+			NoMetadata:     true,
+			TitleToH1:      true,
+			PlainText:      true,
+		}
+
+		t := transformer.New(markdown, &page, blocks, m.queryPool, nil)
+		content := t.Transform()
+
+		if len(content) < m.PageMinChars {
+			log.Printf("Skip content by MinChars=%v, id: %v, len: %v", m.PageMinChars, page.ID, len(content))
+			continue
+		} else if m.PageMaxChars > 0 && len(content) > m.PageMaxChars {
+			log.Printf("Skip content by MaxChars=%v, id: %v, len: %v", m.PageMaxChars, page.ID, len(content))
+			continue
+		}
+
+		contents = append(contents, content)
+	}
+
+	close(m.queryPool)
+	queryWg.Wait()
+
+	if len(contents) == 0 {
+		return nil
+	}
+
+	target := notion.Page{}
+	if m.ExecOne != "" {
+		p, err := m.Client.FindPageByID(context.Background(), transformer.SimpleID(m.ExecOne))
+		if err == nil {
+			target = p
+		}
+	}
+	if target.ID == "" {
+		target = pages[0]
+	}
+
+	content := strings.Join(contents, "\n")
+	return m.runLLMContent(target, content)
+}
+
 func (m *LangModel) runLLMPage(page notion.Page) error {
 	blocks, err := m.QueryBlocks(page.ID)
 	if err != nil {
@@ -265,6 +344,10 @@ func (m *LangModel) runLLMPage(page notion.Page) error {
 		return nil
 	}
 
+	return m.runLLMContent(page, content)
+}
+
+func (m *LangModel) runLLMContent(page notion.Page, content string) error {
 	req := openai.ChatCompletionRequest{
 		Model: openai.GPT3Dot5Turbo,
 		Messages: []openai.ChatCompletionMessage{
@@ -279,15 +362,15 @@ func (m *LangModel) runLLMPage(page notion.Page) error {
 		},
 	}
 
-	if m.Model != "" { // Use user config model
+	if m.Model != "" {
 		req.Model = m.Model
 	}
 
-	if m.Temperature != nil { // Use user config temperature
+	if m.Temperature != nil {
 		req.Temperature = *m.Temperature
 	}
 
-	if m.RespJSON { // Experimental
+	if m.RespJSON {
 		req.ResponseFormat = &openai.ChatCompletionResponseFormat{
 			Type: openai.ChatCompletionResponseFormatTypeJSONObject,
 		}
