@@ -360,7 +360,7 @@ func (e *Exporter) StartDownloader(wg *sync.WaitGroup, size int) chan *transform
 	return taskPool
 }
 
-var imgExtension = regexp.MustCompile(`\.[png|jpg|jpeg|gif|webp]`)
+var imgExtension = regexp.MustCompile(`(?i)\.(png|jpe?g|gif|webp)$`)
 
 func (e *Exporter) downloadAsset(asset *transformer.AssetFuture) (string, error) {
 	if e.AssetDirectory == "" {
