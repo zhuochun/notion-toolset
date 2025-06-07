@@ -4,6 +4,8 @@ A set of tools to automate my [Notion](https://www.notion.so/) workflow using [N
 
 Build with [dstotijn/go-notion](https://pkg.go.dev/github.com/dstotijn/go-notion).
 
+Requires **Go 1.20** or later.
+
 ## Repo Setup
 
 Clone the repository and download the Go dependencies:
