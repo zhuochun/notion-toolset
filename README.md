@@ -4,6 +4,20 @@ A set of tools to automate my [Notion](https://www.notion.so/) workflow using [N
 
 Build with [dstotijn/go-notion](https://pkg.go.dev/github.com/dstotijn/go-notion).
 
+## Repo Setup
+
+Clone the repository and download the Go dependencies:
+
+```bash
+git clone https://github.com/zhuochun/notion-toolset.git
+cd notion-toolset
+go mod download
+go vet ./...
+```
+
+You can then build the tool with `go build` or run commands directly using
+`go run main.go`.
+
 ## Setup
 
 - Follow [the official guide](https://developers.notion.com/docs/getting-started) to create your own Notion integration.
