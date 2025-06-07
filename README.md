@@ -30,3 +30,4 @@ Build with [dstotijn/go-notion](https://pkg.go.dev/github.com/dstotijn/go-notion
 - `--cmd=export`: Export/backup pages in a database to markdown files (text and images)
 - `--cmd=llm`: Run a GPT prompt on a page content
   - Set `groupExec: true` in the LLM config to combine all pages in a single request
+  - Optional `groupJournalID` writes the group result to today's journal page when set
