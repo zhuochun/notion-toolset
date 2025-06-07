@@ -24,7 +24,7 @@ Build with [dstotijn/go-notion](https://pkg.go.dev/github.com/dstotijn/go-notion
 
 - `--cmd=daily-journal`: Create empty daily pages (YYYY-MM-DD) in a database
 - `--cmd=weekly-journal`: Create empty weekly pages (YYYY-MM-DD/YYYY-MM-DD) in a database
-- `--cmd=duplicate`: Find duplicated pages with a same titles in a database, and write them inside a block
+- `--cmd=duplicate`: Find duplicated pages with a same titles in a database, and write them inside a block. Optionally checks a URL property for broken links when configured
 - `--cmd=flashback`: Resurface some random pages in a database, and write them inside a block/or today's journal page
 - `--cmd=collector`: Find new pages that have not been collected, and write them inside a block
 - `--cmd=export`: Export/backup pages in a database to markdown files (text and images)

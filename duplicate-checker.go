@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net/http"
 	"time"
 
 	"github.com/dstotijn/go-notion"
@@ -19,6 +20,7 @@ type DuplicateCheckerConfig struct {
 	// values matches another page's value (OR semantics). If the slice is
 	// empty, page titles are used. Empty or nil property values are ignored.
 	CheckProperties        []string `yaml:"checkProperties"`
+	BrokenURLProperty      string   `yaml:"brokenURLproperty"`
 	DuplicateDumpID        string   `yaml:"duplicateDumpID"`
 	DuplicateDumpTextBlock string   `yaml:"duplicateDumpTextBlock"` // Format https://pkg.go.dev/github.com/dstotijn/go-notion#ParagraphBlock
 	// DuplicateDumpBlock string   `yaml:"duplicateDumpBlock"` // DEPRECATED (2023-12) use duplicateDumpTextBlock
@@ -47,17 +49,19 @@ func (d *DuplicateChecker) Run() error {
 			pageNum += 1
 
 			keys := d.pageKeys(page)
-			if len(keys) == 0 {
-				continue
+			if len(keys) != 0 {
+				for _, key := range keys {
+					if id, ok := set[key]; ok {
+						d.WriteBlock(page.ID)
+						d.WriteBlock(id)
+					} else {
+						set[key] = page.ID
+					}
+				}
 			}
 
-			for _, key := range keys {
-				if id, ok := set[key]; ok {
-					d.WriteBlock(page.ID)
-					d.WriteBlock(id)
-				} else {
-					set[key] = page.ID
-				}
+			if d.brokenURLCheck(page) {
+				d.WriteBlock(page.ID)
 			}
 
 			if d.DebugMode && pageNum%500 == 0 {
@@ -161,4 +165,40 @@ func stringifyDBProp(prop notion.DatabasePageProperty) string {
 		}
 	}
 	return ""
+}
+
+// brokenURLCheck checks if the configured URL property of the page is broken.
+// It returns true when the URL is set but leads to a non-OK HTTP status or
+// errors during request. When BrokenURLProperty is empty, it always returns
+// false.
+func (d *DuplicateChecker) brokenURLCheck(page notion.Page) bool {
+	if d.BrokenURLProperty == "" {
+		return false
+	}
+
+	props, ok := page.Properties.(notion.DatabasePageProperties)
+	if !ok {
+		return false
+	}
+
+	prop, ok := props[d.BrokenURLProperty]
+	if !ok {
+		return false
+	}
+
+	urlStr := stringifyDBProp(prop)
+	if urlStr == "" {
+		return false
+	}
+
+	resp, err := http.Head(urlStr)
+	if err != nil {
+		return true
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= http.StatusBadRequest {
+		return true
+	}
+	return false
 }

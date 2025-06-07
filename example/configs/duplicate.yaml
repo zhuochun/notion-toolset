@@ -1,6 +1,7 @@
 duplicateChecker:
   databaseID: aaaabbbbccccddddeeee # Specify your databaseID
   duplicateDumpID: aaaabbbbccccddddeeee # Write to BlockID
+  brokenURLproperty: "" # Optional property name for url check
   duplicateDumpBlock: >
     {
         "rich_text": [
