@@ -308,8 +308,8 @@ func (e *Exporter) exportPage(page notion.Page) error {
 				}
 			}
 		case *notion.LinkToPageBlock:
-			if b.LinkToPage.Type == notion.LinkToPageTypePage {
-				if child, err := e.Client.FindPageByID(context.Background(), b.LinkToPage.PageID); err == nil {
+			if b.PageID != "" {
+				if child, err := e.Client.FindPageByID(context.Background(), b.PageID); err == nil {
 					if err := e.exportPage(child); err != nil {
 						log.Printf("Failed to export sub-page: %v", err)
 					}
