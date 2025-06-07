@@ -1,6 +1,6 @@
 module github.com/zhuochun/notion-toolset
 
-go 1.16
+go 1.20
 
 require (
 	github.com/dstotijn/go-notion v0.11.0
