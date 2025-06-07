@@ -169,12 +169,13 @@ func (m *LangModel) scanDirectPages(pageIDs []string) (chan []notion.Page, chan 
 func (m *LangModel) scanDatabasePages() (chan []notion.Page, chan error) {
 	q := NewDatabaseQuery(m.Client, m.DatabaseID)
 
+	today := time.Now().Format(layoutDate)
 	date := "" // default
 	if m.LookbackDays > 0 {
 		date = time.Now().AddDate(0, 0, -m.LookbackDays).Format(layoutDate)
 	}
 
-	if err := q.SetQuery(m.DatabaseQuery, QueryBuilder{Date: date}); err != nil {
+	if err := q.SetQuery(m.DatabaseQuery, QueryBuilder{Date: date, Today: today}); err != nil {
 		log.Panicf("Invalid query: %v, err: %v", m.DatabaseQuery, err)
 	}
 
