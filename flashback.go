@@ -135,36 +135,12 @@ func (f *Flashback) SetFlashbackPageID() {
 		return
 	}
 
-	now := time.Now()
-	title := now.Format(layoutDate)
-
-	q := NewDatabaseQuery(f.Client, f.FlashbackJournalID)
-	q.Query = &notion.DatabaseQuery{
-		Filter: &notion.DatabaseQueryFilter{
-			Property: "title",
-			DatabaseQueryPropertyFilter: notion.DatabaseQueryPropertyFilter{
-				Title: &notion.TextPropertyFilter{Equals: title},
-			},
-		},
-		Sorts: []notion.DatabaseQuerySort{
-			{Timestamp: notion.SortTimeStampCreatedTime, Direction: notion.SortDirAsc},
-		},
-	}
-
-	pages, err := q.Once(context.TODO())
+	page, err := GetTodayJournalPage(context.TODO(), f.Client, f.FlashbackJournalID, f.DebugMode)
 	if err != nil {
-		log.Panicf("No journal found: %v, err: %v", title, err)
+		log.Panic(err)
 	}
 
-	if len(pages) > 1 {
-		log.Printf("Multiple journal found: %v, cnt: %v, uses: %v", title, len(pages), pages[0].ID)
-	}
-
-	if f.DebugMode {
-		log.Printf("Journal by title: %v, found: %v, uses: %v", title, len(pages), pages[0].ID)
-	}
-
-	f.FlashbackPageID = pages[0].ID
+	f.FlashbackPageID = page.ID
 }
 
 func (f *Flashback) WriteBlock(pageID string) (notion.BlockChildrenResponse, error) {

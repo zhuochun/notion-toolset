@@ -452,35 +452,5 @@ func (m *LangModel) WriteJSON(page notion.Page, content string) (notion.BlockChi
 }
 
 func (m *LangModel) getJournalPage() (notion.Page, error) {
-	now := time.Now()
-	title := now.Format(layoutDate)
-
-	q := NewDatabaseQuery(m.Client, m.GroupJournalID)
-	q.Query = &notion.DatabaseQuery{
-		Filter: &notion.DatabaseQueryFilter{
-			Property: "title",
-			DatabaseQueryPropertyFilter: notion.DatabaseQueryPropertyFilter{
-				Title: &notion.TextPropertyFilter{Equals: title},
-			},
-		},
-		Sorts: []notion.DatabaseQuerySort{
-			{Timestamp: notion.SortTimeStampCreatedTime, Direction: notion.SortDirAsc},
-		},
-	}
-
-	pages, err := q.Once(context.TODO())
-	if err != nil {
-		return notion.Page{}, fmt.Errorf("no journal found: %v, err: %v", title, err)
-	}
-	if len(pages) == 0 {
-		return notion.Page{}, fmt.Errorf("no journal found: %v", title)
-	}
-	if len(pages) > 1 {
-		log.Printf("Multiple journal found: %v, cnt: %v, uses: %v", title, len(pages), pages[0].ID)
-	}
-	if m.DebugMode {
-		log.Printf("Journal by title: %v, found: %v, uses: %v", title, len(pages), pages[0].ID)
-	}
-
-	return pages[0], nil
+	return GetTodayJournalPage(context.TODO(), m.Client, m.GroupJournalID, m.DebugMode)
 }
