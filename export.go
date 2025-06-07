@@ -132,11 +132,11 @@ func (e *Exporter) Run() error {
 	}
 	log.Printf("Scanned pages: %v", pageNum)
 
-	close(e.exportPool) // TODO sub-page export cannot close chan here
+	close(e.exportPool)
 	exportWg.Wait()
 
 	close(e.downloadPool)
-	exportWg.Wait()
+	downloadWg.Wait()
 
 	close(e.queryPool)
 	queryWg.Wait()
@@ -297,6 +297,26 @@ func (e *Exporter) exportPage(page notion.Page) error {
 
 	t := transformer.New(e.Markdown, &page, blocks, e.queryPool, e.downloadPool)
 	t.TransformOut(file)
+
+	// export sub-pages inside this page
+	for _, block := range blocks {
+		switch b := block.(type) {
+		case *notion.ChildPageBlock:
+			if child, err := e.Client.FindPageByID(context.Background(), b.ID()); err == nil {
+				if err := e.exportPage(child); err != nil {
+					log.Printf("Failed to export sub-page: %v", err)
+				}
+			}
+		case *notion.LinkToPageBlock:
+			if b.LinkToPage.Type == notion.LinkToPageTypePage {
+				if child, err := e.Client.FindPageByID(context.Background(), b.LinkToPage.PageID); err == nil {
+					if err := e.exportPage(child); err != nil {
+						log.Printf("Failed to export sub-page: %v", err)
+					}
+				}
+			}
+		}
+	}
 
 	return nil
 }
