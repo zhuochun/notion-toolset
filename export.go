@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/dstotijn/go-notion"
+	"github.com/zhuochun/notion-toolset/retry"
 	"github.com/zhuochun/notion-toolset/transformer"
 	"golang.org/x/time/rate"
 )
@@ -154,7 +155,7 @@ func (e *Exporter) ScanPages() (chan []notion.Page, chan error) {
 		pagesChan := make(chan []notion.Page, 1)
 		errChan := make(chan error, 1)
 
-		if page, err := e.Client.FindPageByID(context.Background(), e.ExecOne); err == nil {
+		if page, err := e.findPageByIDWithRetry(context.Background(), e.ExecOne); err == nil {
 			pagesChan <- []notion.Page{page}
 		} else {
 			errChan <- err
@@ -216,7 +217,7 @@ func (e *Exporter) QueryBlocks(blockID string) ([]notion.Block, error) {
 	cursor := ""
 	for {
 		query := &notion.PaginationQuery{StartCursor: cursor}
-		resp, err := e.Client.FindBlockChildrenByID(context.TODO(), blockID, query)
+		resp, err := e.findBlockChildrenByIDWithRetry(context.TODO(), blockID, query)
 		if err != nil {
 			return blocks, err
 		}
@@ -302,14 +303,14 @@ func (e *Exporter) exportPage(page notion.Page) error {
 	for _, block := range blocks {
 		switch b := block.(type) {
 		case *notion.ChildPageBlock:
-			if child, err := e.Client.FindPageByID(context.Background(), b.ID()); err == nil {
+			if child, err := e.findPageByIDWithRetry(context.Background(), b.ID()); err == nil {
 				if err := e.exportPage(child); err != nil {
 					log.Printf("Failed to export sub-page: %v", err)
 				}
 			}
 		case *notion.LinkToPageBlock:
 			if b.PageID != "" {
-				if child, err := e.Client.FindPageByID(context.Background(), b.PageID); err == nil {
+				if child, err := e.findPageByIDWithRetry(context.Background(), b.PageID); err == nil {
 					if err := e.exportPage(child); err != nil {
 						log.Printf("Failed to export sub-page: %v", err)
 					}
@@ -402,4 +403,24 @@ func (e *Exporter) downloadAsset(asset *transformer.AssetFuture) (string, error)
 
 func (e *Exporter) getAssetFilename(asset *transformer.AssetFuture) string {
 	return filepath.Join(e.AssetDirectory, transformer.SimpleID(asset.BlockID)+asset.Extension)
+}
+
+func (e *Exporter) findPageByIDWithRetry(ctx context.Context, pageID string) (notion.Page, error) {
+	var page notion.Page
+	err := retry.Do(func() error {
+		var innerErr error
+		page, innerErr = e.Client.FindPageByID(ctx, pageID)
+		return innerErr
+	})
+	return page, err
+}
+
+func (e *Exporter) findBlockChildrenByIDWithRetry(ctx context.Context, blockID string, query *notion.PaginationQuery) (notion.BlockChildrenResponse, error) {
+	var resp notion.BlockChildrenResponse
+	err := retry.Do(func() error {
+		var innerErr error
+		resp, innerErr = e.Client.FindBlockChildrenByID(ctx, blockID, query)
+		return innerErr
+	})
+	return resp, err
 }
