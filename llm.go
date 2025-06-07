@@ -27,6 +27,8 @@ type LangModelConfig struct {
 	ChainFile string `yaml:"chainFile"`
 	// Scan all pages then run a single LLM with all page contents
 	GroupExec bool `yaml:"groupExec"`
+	// Write the combined result to today's journal database instead of a page ID
+	GroupJournalID string `yaml:"groupJournalID"`
 	// LLM config prompt message
 	Prompt      string   `yaml:"prompt"`
 	Model       string   `yaml:"model"`       // optional, default to GPT3-Turbo
@@ -305,14 +307,21 @@ func (m *LangModel) runLLMGroup() error {
 	}
 
 	target := notion.Page{}
-	if m.ExecOne != "" {
+	if m.GroupJournalID != "" {
+		p, err := m.getJournalPage()
+		if err != nil {
+			return err
+		}
+		target = p
+	}
+	if target.ID == "" && m.ExecOne != "" {
 		p, err := m.Client.FindPageByID(context.Background(), transformer.SimpleID(m.ExecOne))
 		if err == nil {
 			target = p
 		}
 	}
 	if target.ID == "" {
-		target = pages[0]
+		target = pages[len(pages)-1]
 	}
 
 	content := strings.Join(contents, "\n")
@@ -440,4 +449,38 @@ func (m *LangModel) WriteJSON(page notion.Page, content string) (notion.BlockChi
 	}
 
 	return w.Do(context.TODO())
+}
+
+func (m *LangModel) getJournalPage() (notion.Page, error) {
+	now := time.Now()
+	title := now.Format(layoutDate)
+
+	q := NewDatabaseQuery(m.Client, m.GroupJournalID)
+	q.Query = &notion.DatabaseQuery{
+		Filter: &notion.DatabaseQueryFilter{
+			Property: "title",
+			DatabaseQueryPropertyFilter: notion.DatabaseQueryPropertyFilter{
+				Title: &notion.TextPropertyFilter{Equals: title},
+			},
+		},
+		Sorts: []notion.DatabaseQuerySort{
+			{Timestamp: notion.SortTimeStampCreatedTime, Direction: notion.SortDirAsc},
+		},
+	}
+
+	pages, err := q.Once(context.TODO())
+	if err != nil {
+		return notion.Page{}, fmt.Errorf("no journal found: %v, err: %v", title, err)
+	}
+	if len(pages) == 0 {
+		return notion.Page{}, fmt.Errorf("no journal found: %v", title)
+	}
+	if len(pages) > 1 {
+		log.Printf("Multiple journal found: %v, cnt: %v, uses: %v", title, len(pages), pages[0].ID)
+	}
+	if m.DebugMode {
+		log.Printf("Journal by title: %v, found: %v, uses: %v", title, len(pages), pages[0].ID)
+	}
+
+	return pages[0], nil
 }
