@@ -1,0 +1,8 @@
+llmJournal:
+  dailyDatabaseID: aaaabbbbccccddddeeee # Daily journal database ID
+  weeklyDatabaseID: aaaabbbbccccddddeeee # Weekly journal database ID
+  memoryPageID: aaaabbbbccccddddeeee # Optional memory page ID
+  prompt: >
+    Summarise the following weekly journals with key insights.
+  memoryPrompt: >
+    Update the long term memory with the new summary below and the existing memory.
