@@ -5,7 +5,7 @@ go 1.23.0
 require (
 	github.com/dstotijn/go-notion v0.11.0
 	github.com/go-yaml/yaml v2.1.0+incompatible
-	github.com/sashabaranov/go-openai v1.40.1
+	github.com/sashabaranov/go-openai v1.40.3
 	golang.org/x/time v0.12.0
 )
 
