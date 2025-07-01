@@ -47,3 +47,4 @@ You can then build the tool with `go build` or run commands directly using
 - `--cmd=llm`: Run a GPT prompt on a page content
   - Set `groupExec: true` in the LLM config to combine all pages in a single request
   - Optional `groupJournalID` writes the group result to today's journal page when set
+- `--cmd=llm-journal`: Summarise a week's journals with an LLM and optionally update a memory page
