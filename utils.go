@@ -94,5 +94,22 @@ func (a *AppendBlock) AddBlocks(name, s string, builder interface{}) error {
 }
 
 func (a *AppendBlock) Do(ctx context.Context) (notion.BlockChildrenResponse, error) {
-	return a.Client.AppendBlockChildren(ctx, a.AppendToPageID, a.Blocks)
+	var finalResp notion.BlockChildrenResponse
+	var batchedBlocks []notion.Block
+
+	for i, block := range a.Blocks {
+		batchedBlocks = append(batchedBlocks, block)
+		if len(batchedBlocks) == 100 || (i == len(a.Blocks)-1 && len(batchedBlocks) > 0) {
+			resp, err := a.Client.AppendBlockChildren(ctx, a.AppendToPageID, batchedBlocks)
+			if err != nil {
+				return notion.BlockChildrenResponse{}, err
+			}
+			finalResp.Results = append(finalResp.Results, resp.Results...)
+			finalResp.HasMore = resp.HasMore
+			finalResp.NextCursor = resp.NextCursor
+			batchedBlocks = nil
+		}
+	}
+
+	return finalResp, nil
 }

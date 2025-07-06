@@ -426,7 +426,7 @@ func (m *LangModel) WriteBlock(page notion.Page, content string) (notion.BlockCh
 				return notion.BlockChildrenResponse{}, err
 			}
 		} else {
-			w.Blocks = append(w.Blocks, notion.ParagraphBlock{
+			w.Blocks = append(w.Blocks, &notion.ParagraphBlock{
 				RichText: []notion.RichText{
 					{Text: &notion.Text{Content: p}},
 				},
