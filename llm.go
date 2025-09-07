@@ -69,7 +69,15 @@ func (m *LangModel) Validate() error {
 	if openaiToken == "" {
 		return fmt.Errorf("missing token in env.DOT_OPENAI_KEY")
 	}
-	m.OpenaiClient = openai.NewClient(openaiToken)
+
+	openaiURL := os.Getenv("DOT_OPENAI_URL")
+	if openaiURL != "" {
+		cfg := openai.DefaultConfig(openaiToken)
+		cfg.BaseURL = openaiURL
+		m.OpenaiClient = openai.NewClientWithConfig(cfg)
+	} else {
+		m.OpenaiClient = openai.NewClient(openaiToken)
+	}
 
 	// set default exportspeed
 	if m.TaskSpeed < 1 {
