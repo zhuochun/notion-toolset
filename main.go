@@ -34,6 +34,7 @@ type Config struct {
 	Collector        CollectorConfig        `yaml:"collector"`
 	Exporter         ExporterConfig         `yaml:"exporter"`
 	LLM              LangModelConfig        `yaml:"llm"`
+	LLMJournal       LLMJournalConfig       `yaml:"llmJournal"`
 }
 
 type Cmd interface {
@@ -140,6 +141,12 @@ func runCmd(notionClient *notion.Client, cfg Config) {
 			ExecOne:         *flagExecOne,
 			Client:          notionClient,
 			LangModelConfig: cfg.LLM,
+		}
+	case "llm-journal": // summarise journals with LLM
+		cmd = &LLMJournal{
+			DebugMode:        *flagDebugMode,
+			Client:           notionClient,
+			LLMJournalConfig: cfg.LLMJournal,
 		}
 	default:
 		log.Fatalf("Unknown cmd: `%v`", *flagCmd)
