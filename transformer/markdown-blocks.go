@@ -1,6 +1,7 @@
 package transformer
 
 import (
+	"fmt"
 	"log"
 	"strings"
 
@@ -42,9 +43,9 @@ func (m *Markdown) transformBlock(env *markdownEnv, block notion.Block) bool {
 	case *notion.ToggleBlock:
 		m.markdownToggle(env, b)
 	case *notion.ChildPageBlock:
-		return false // TODO
+		m.markdownChildPage(env, b)
 	case *notion.ChildDatabaseBlock:
-		return false // TODO
+		m.markdownChildDatabase(env, b)
 	case *notion.CalloutBlock:
 		m.markdownCallout(env, b)
 	case *notion.QuoteBlock:
@@ -52,17 +53,17 @@ func (m *Markdown) transformBlock(env *markdownEnv, block notion.Block) bool {
 	case *notion.CodeBlock:
 		m.markdownCode(env, b)
 	case *notion.EmbedBlock:
-		return false // TODO
+		m.markdownEmbed(env, b)
 	case *notion.ImageBlock:
 		m.markdownImage(env, b)
 	case *notion.AudioBlock:
-		return false // TODO
+		m.markdownAudio(env, b)
 	case *notion.VideoBlock:
 		m.markdownVideo(env, b)
 	case *notion.FileBlock:
-		return false // TODO
+		m.markdownFile(env, b)
 	case *notion.PDFBlock:
-		return false // TODO
+		m.markdownPDF(env, b)
 	case *notion.BookmarkBlock:
 		m.markdownBookmark(env, b)
 	case *notion.EquationBlock:
@@ -88,14 +89,72 @@ func (m *Markdown) transformBlock(env *markdownEnv, block notion.Block) bool {
 	case *notion.SyncedBlock:
 		m.markdownSyncedBlock(env, b)
 	case *notion.TemplateBlock:
-		return false // TODO
+		m.markdownTemplate(env, b)
 	case *notion.UnsupportedBlock:
-		return false // TODO
+		m.markdownUnsupported(env, b)
 	default:
-		return false // TODO
+		m.markdownDefault(env, b)
 	}
 
 	return true
+}
+
+func captionOrFallback(text []notion.RichText, fallback string) string {
+	caption := ConcatRichText(text)
+	if caption == "" {
+		return fallback
+	}
+	return caption
+}
+
+func (m *Markdown) queueAssetDownload(env *markdownEnv, blockID string, url string) (string, error) {
+	if env.m.assetChan == nil {
+		return url, nil
+	}
+
+	asset := NewAssetFuture(blockID, url)
+	env.m.assetChan <- asset
+
+	return asset.Read()
+}
+
+func (m *Markdown) fileBlockURL(env *markdownEnv, blockID string, fileType notion.FileType, external *notion.FileExternal, file *notion.FileFile) string {
+	switch fileType {
+	case notion.FileTypeExternal:
+		if external != nil {
+			return external.URL
+		}
+	case notion.FileTypeFile:
+		if file != nil {
+			filename, err := m.queueAssetDownload(env, blockID, file.URL)
+			if err != nil {
+				log.Printf("Failed to download asset for block %v: %v", blockID, err)
+				return file.URL
+			}
+			return filename
+		}
+	}
+	return ""
+}
+
+func (m *Markdown) writeInternalLink(env *markdownEnv, targetID, title string) {
+	if title == "" {
+		title = SimpleAliasOrID(targetID, env.aliasMap)
+	}
+
+	env.b.WriteString(env.indent)
+
+	if env.m.config.PlainText {
+		env.b.WriteString(title)
+		env.b.WriteString("\n\n")
+		return
+	}
+
+	env.b.WriteString("[[")
+	env.b.WriteString(SimpleAliasOrID(targetID, env.aliasMap))
+	env.b.WriteString("|")
+	env.b.WriteString(title)
+	env.b.WriteString("]]\n\n")
 }
 
 func (m *Markdown) markdownRichText(env *markdownEnv, text notion.RichText) {
@@ -283,6 +342,14 @@ func (m *Markdown) markdownToggle(env *markdownEnv, block *notion.ToggleBlock) {
 	m.markdownPlainChildren(env, block)
 }
 
+func (m *Markdown) markdownChildPage(env *markdownEnv, block *notion.ChildPageBlock) {
+	m.writeInternalLink(env, block.ID(), block.Title)
+}
+
+func (m *Markdown) markdownChildDatabase(env *markdownEnv, block *notion.ChildDatabaseBlock) {
+	m.writeInternalLink(env, block.ID(), block.Title)
+}
+
 func (m *Markdown) markdownCallout(env *markdownEnv, block *notion.CalloutBlock) {
 	env.b.WriteString(env.indent)
 	env.b.WriteString("> ")
@@ -326,24 +393,40 @@ func (m *Markdown) markdownCode(env *markdownEnv, block *notion.CodeBlock) {
 	env.b.WriteString("\n```\n\n")
 }
 
+func (m *Markdown) markdownEmbed(env *markdownEnv, block *notion.EmbedBlock) {
+	if m.config.PlainText {
+		return
+	}
+
+	env.b.WriteString(env.indent)
+	text := block.URL
+	if text == "" {
+		text = "Embed"
+	}
+
+	env.b.WriteString("[")
+	env.b.WriteString(text)
+	env.b.WriteString("](")
+	env.b.WriteString(block.URL)
+	env.b.WriteString(")\n\n")
+}
+
 func (m *Markdown) markdownImage(env *markdownEnv, block *notion.ImageBlock) {
 	if m.config.PlainText {
 		return
 	}
 
 	var filename string
-	var err error
 
 	if block.Type == notion.FileTypeExternal {
-		filename = block.External.URL
-	} else if env.m.assetChan != nil {
-		asset := NewAssetFuture(block.ID(), block.File.URL)
-		env.m.assetChan <- asset
-
-		filename, err = asset.Read()
+		if block.External != nil {
+			filename = block.External.URL
+		}
+	} else {
+		filename = m.fileBlockURL(env, block.ID(), block.Type, block.External, block.File)
 	}
 
-	if err != nil {
+	if filename == "" {
 		return
 	}
 
@@ -364,21 +447,78 @@ func (m *Markdown) markdownVideo(env *markdownEnv, block *notion.VideoBlock) {
 		return
 	}
 
+	filename := m.fileBlockURL(env, block.ID(), block.Type, block.External, block.File)
+	if filename == "" {
+		return
+	}
+
+	caption := captionOrFallback(block.Caption, "Video")
+
 	env.b.WriteString(env.indent)
 	env.b.WriteString("[")
-
-	for _, text := range block.Caption {
-		env.b.WriteString(text.PlainText)
-	}
-
+	env.b.WriteString(caption)
 	env.b.WriteString("](")
+	env.b.WriteString(filename)
+	env.b.WriteString(")\n\n")
+}
 
-	if block.Type == notion.FileTypeExternal {
-		env.b.WriteString(block.External.URL)
-	} else {
-		env.b.WriteString(block.File.URL) // TODO downlaod
+func (m *Markdown) markdownAudio(env *markdownEnv, block *notion.AudioBlock) {
+	if m.config.PlainText {
+		return
 	}
 
+	filename := m.fileBlockURL(env, block.ID(), block.Type, block.External, block.File)
+	if filename == "" {
+		return
+	}
+
+	caption := captionOrFallback(block.Caption, "Audio")
+
+	env.b.WriteString(env.indent)
+	env.b.WriteString("[")
+	env.b.WriteString(caption)
+	env.b.WriteString("](")
+	env.b.WriteString(filename)
+	env.b.WriteString(")\n\n")
+}
+
+func (m *Markdown) markdownFile(env *markdownEnv, block *notion.FileBlock) {
+	if m.config.PlainText {
+		return
+	}
+
+	filename := m.fileBlockURL(env, block.ID(), block.Type, block.External, block.File)
+	if filename == "" {
+		return
+	}
+
+	caption := captionOrFallback(block.Caption, "File")
+
+	env.b.WriteString(env.indent)
+	env.b.WriteString("[")
+	env.b.WriteString(caption)
+	env.b.WriteString("](")
+	env.b.WriteString(filename)
+	env.b.WriteString(")\n\n")
+}
+
+func (m *Markdown) markdownPDF(env *markdownEnv, block *notion.PDFBlock) {
+	if m.config.PlainText {
+		return
+	}
+
+	filename := m.fileBlockURL(env, block.ID(), block.Type, block.External, block.File)
+	if filename == "" {
+		return
+	}
+
+	caption := captionOrFallback(block.Caption, "PDF")
+
+	env.b.WriteString(env.indent)
+	env.b.WriteString("[")
+	env.b.WriteString(caption)
+	env.b.WriteString("](")
+	env.b.WriteString(filename)
 	env.b.WriteString(")\n\n")
 }
 
@@ -459,11 +599,45 @@ func (m *Markdown) markdownTableRow(env *markdownEnv, block *notion.TableRowBloc
 }
 
 func (m *Markdown) markdownLinkPreview(env *markdownEnv, block *notion.LinkPreviewBlock) {
-	// TODO
+	if m.config.PlainText {
+		return
+	}
+
+	if block.URL == "" {
+		return
+	}
+
+	env.b.WriteString(env.indent)
+	env.b.WriteString("[")
+	env.b.WriteString(block.URL)
+	env.b.WriteString("](")
+	env.b.WriteString(block.URL)
+	env.b.WriteString(")\n\n")
 }
 
 func (m *Markdown) markdownLinkToPage(env *markdownEnv, block *notion.LinkToPageBlock) {
-	// TODO
+	var targetID string
+	var label string
+
+	switch block.Type {
+	case notion.LinkToPageTypePageID:
+		targetID = block.PageID
+		label = "Page"
+	case notion.LinkToPageTypeDatabaseID:
+		targetID = block.DatabaseID
+		label = "Database"
+	}
+
+	if targetID == "" {
+		return
+	}
+
+	title := SimpleAliasOrID(targetID, env.aliasMap)
+	if label != "" {
+		title = fmt.Sprintf("%s %s", label, title)
+	}
+
+	m.writeInternalLink(env, targetID, title)
 }
 
 // TODO handle synced block -> create a separate page and use page embed?
@@ -514,4 +688,33 @@ func (m *Markdown) markdownSyncedFromBlock(env *markdownEnv, block *notion.Synce
 		env.b.WriteString(env.indent)
 		env.b.WriteString("</sync>\n\n")
 	}
+}
+
+func (m *Markdown) markdownTemplate(env *markdownEnv, block *notion.TemplateBlock) {
+	title := captionOrFallback(block.RichText, "Template")
+	markdown := fmt.Sprintf("Template \"%s\" requires manual review", title)
+	m.markdownPlaceholder(env, markdown)
+	m.markdownPlainChildren(env, block)
+}
+
+func (m *Markdown) markdownUnsupported(env *markdownEnv, block *notion.UnsupportedBlock) {
+	m.markdownPlaceholder(env, "Unsupported block encountered in Notion export")
+
+	m.markdownPlainChildren(env, block)
+}
+
+func (m *Markdown) markdownDefault(env *markdownEnv, block notion.Block) {
+	markdown := fmt.Sprintf("Unhandled block of type %T, please review in Notion", block)
+	m.markdownPlaceholder(env, markdown)
+
+	if block.HasChildren() {
+		m.markdownPlainChildren(env, block)
+	}
+}
+
+func (m *Markdown) markdownPlaceholder(env *markdownEnv, message string) {
+	env.b.WriteString(env.indent)
+	env.b.WriteString("> ")
+	env.b.WriteString(message)
+	env.b.WriteString("\n\n")
 }

@@ -361,14 +361,14 @@ func (e *Exporter) StartDownloader(wg *sync.WaitGroup, size int) chan *transform
 	return taskPool
 }
 
-var imgExtension = regexp.MustCompile(`(?i)\.(png|jpe?g|gif|webp)$`)
+var assetExtension = regexp.MustCompile(`(?i)\.(png|jpe?g|gif|webp|mp4|mov|webm|mkv|avi|mp3|wav|m4a|flac|ogg|pdf)$`)
 
 func (e *Exporter) downloadAsset(asset *transformer.AssetFuture) (string, error) {
 	if e.AssetDirectory == "" {
 		return "", fmt.Errorf("config assetDirectory is empty")
 	}
 
-	if !imgExtension.MatchString(asset.Extension) {
+	if !assetExtension.MatchString(asset.Extension) {
 		return "", fmt.Errorf("unsupported extension: %v", asset.Extension)
 	}
 

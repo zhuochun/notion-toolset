@@ -47,3 +47,28 @@ func TestDownloadAssetSupportedExtension(t *testing.T) {
 		t.Fatalf("expected file to exist: %v", err)
 	}
 }
+
+func TestDownloadAssetSupportedExtensionPDF(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("data"))
+	}))
+	defer server.Close()
+
+	e := &Exporter{ExporterConfig: ExporterConfig{AssetDirectory: tmpDir}}
+	asset := transformer.NewAssetFuture("1", server.URL+"/doc.pdf")
+
+	filename, err := e.downloadAsset(asset)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	if !strings.HasSuffix(filename, ".pdf") {
+		t.Fatalf("expected pdf filename, got %v", filename)
+	}
+
+	if _, err := os.Stat(filename); err != nil {
+		t.Fatalf("expected file to exist: %v", err)
+	}
+}
