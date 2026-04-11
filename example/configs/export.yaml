@@ -22,6 +22,7 @@ exporter:
 
   lookbackDays: 1
   directory: "backup/" # Write files to directory (create it first)
+  cleanupDeleted: false # Delete stale top-level markdown files only on full exports
   useTitleAsFilename: false
 
   markdown: # There might be more settings, refer to code

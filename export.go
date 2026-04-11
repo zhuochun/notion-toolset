@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -28,6 +29,7 @@ type ExporterConfig struct {
 	LookbackDays       int      `yaml:"lookbackDays"`   // leave this empty for full backup
 	Directory          string   `yaml:"directory"`      // output directory
 	AssetDirectory     string   `yaml:"assetDirectory"` // output directory for assets (images, etc)
+	CleanupDeleted     bool     `yaml:"cleanupDeleted"`
 	UseTitleAsFilename bool     `yaml:"useTitleAsFilename"`
 	ReplaceTitle       []string `yaml:"replaceTitle"`
 	// transformer
@@ -51,6 +53,9 @@ type Exporter struct {
 	exportPool   chan notion.Page
 	queryPool    chan *transformer.BlockFuture
 	downloadPool chan *transformer.AssetFuture
+
+	exportedFilesMu sync.Mutex
+	exportedFiles   map[string]struct{}
 
 	slugger transformer.SlugRegistry
 }
@@ -109,6 +114,7 @@ func (e *Exporter) precheckDir(dir string) error {
 
 func (e *Exporter) Run() error {
 	e.queryLimiter = rate.NewLimiter(rate.Limit(e.ExportSpeed), int(e.ExportSpeed))
+	e.exportedFiles = map[string]struct{}{}
 
 	// workers to write markdowns
 	exportWg := new(sync.WaitGroup)
@@ -148,8 +154,13 @@ func (e *Exporter) Run() error {
 	case err := <-errChan:
 		return err
 	default:
-		return nil
 	}
+
+	if err := e.cleanupDeletedPages(); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (e *Exporter) ScanPages() (chan []notion.Page, chan error) {
@@ -300,6 +311,7 @@ func (e *Exporter) exportPage(page notion.Page) error {
 
 	t := transformer.New(e.Markdown, &page, blocks, e.queryPool, e.downloadPool)
 	t.TransformOut(file)
+	e.trackExportedFile(filename)
 
 	// export sub-pages inside this page
 	for _, block := range blocks {
@@ -345,6 +357,98 @@ func (e *Exporter) getExportFilename(page notion.Page) string {
 	}
 
 	return filepath.Join(e.Directory, slug+".md")
+}
+
+func (e *Exporter) trackExportedFile(filename string) {
+	e.exportedFilesMu.Lock()
+	defer e.exportedFilesMu.Unlock()
+
+	if e.exportedFiles == nil {
+		e.exportedFiles = map[string]struct{}{}
+	}
+	e.exportedFiles[filename] = struct{}{}
+}
+
+func (e *Exporter) cleanupDeletedPages() error {
+	if !e.CleanupDeleted || e.ExecOne != "" || e.LookbackDays > 0 {
+		return nil
+	}
+
+	entries, err := os.ReadDir(e.Directory)
+	if err != nil {
+		return fmt.Errorf("read export directory: %v, err: %w", e.Directory, err)
+	}
+
+	exportedFiles := e.snapshotExportedFiles()
+	for _, entry := range entries {
+		if !entry.Type().IsRegular() || !isManagedMarkdownFile(entry.Name()) {
+			continue
+		}
+
+		filename := filepath.Join(e.Directory, entry.Name())
+		if _, ok := exportedFiles[filename]; ok {
+			continue
+		}
+
+		if err := e.removeManagedFile(filename, e.Directory); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (e *Exporter) snapshotExportedFiles() map[string]struct{} {
+	e.exportedFilesMu.Lock()
+	defer e.exportedFilesMu.Unlock()
+
+	snapshot := make(map[string]struct{}, len(e.exportedFiles))
+	for filename := range e.exportedFiles {
+		snapshot[filename] = struct{}{}
+	}
+	return snapshot
+}
+
+func isManagedMarkdownFile(name string) bool {
+	return filepath.Ext(name) == ".md" && !strings.HasPrefix(name, ".")
+}
+
+func (e *Exporter) removeManagedFile(filename, rootDir string) error {
+	if filename == "" {
+		return nil
+	}
+
+	managed, err := isManagedPath(rootDir, filename)
+	if err != nil {
+		return fmt.Errorf("validate managed path: %v, err: %w", filename, err)
+	}
+	if !managed {
+		return fmt.Errorf("refuse to delete file outside export directory: %v", filename)
+	}
+	if err := os.Remove(filename); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("delete exported file: %v, err: %w", filename, err)
+	}
+
+	if e.DebugMode {
+		log.Printf("Deleted stale export: %v", filename)
+	}
+	return nil
+}
+
+func isManagedPath(rootDir, filename string) (bool, error) {
+	rootAbs, err := filepath.Abs(rootDir)
+	if err != nil {
+		return false, err
+	}
+	fileAbs, err := filepath.Abs(filename)
+	if err != nil {
+		return false, err
+	}
+	rel, err := filepath.Rel(rootAbs, fileAbs)
+	if err != nil {
+		return false, err
+	}
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator)), nil
 }
 
 func (e *Exporter) StartDownloader(wg *sync.WaitGroup, size int) chan *transformer.AssetFuture {

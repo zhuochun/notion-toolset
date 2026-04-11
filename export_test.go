@@ -75,6 +75,146 @@ func TestDownloadAssetSupportedExtensionPDF(t *testing.T) {
 	}
 }
 
+func TestCleanupDeletedPagesRemovesStaleMarkdownOnFullExport(t *testing.T) {
+	tmpDir := t.TempDir()
+	liveFile := filepath.Join(tmpDir, "live.md")
+	staleFile := filepath.Join(tmpDir, "stale.md")
+	keepTextFile := filepath.Join(tmpDir, "note.txt")
+
+	mustWriteFile(t, liveFile, "live")
+	mustWriteFile(t, staleFile, "stale")
+	mustWriteFile(t, keepTextFile, "keep")
+
+	e := &Exporter{
+		ExporterConfig: ExporterConfig{
+			Directory:      tmpDir,
+			CleanupDeleted: true,
+		},
+		exportedFiles: map[string]struct{}{
+			liveFile: {},
+		},
+	}
+
+	if err := e.cleanupDeletedPages(); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	assertExists(t, liveFile)
+	assertNotExists(t, staleFile)
+	assertExists(t, keepTextFile)
+}
+
+func TestCleanupDeletedPagesIgnoresSubdirectoriesAndHiddenMarkdown(t *testing.T) {
+	tmpDir := t.TempDir()
+	hiddenFile := filepath.Join(tmpDir, ".internal.md")
+	subDir := filepath.Join(tmpDir, "nested")
+	subFile := filepath.Join(subDir, "child.md")
+
+	if err := os.Mkdir(subDir, 0755); err != nil {
+		t.Fatalf("mkdir failed: %v", err)
+	}
+	mustWriteFile(t, hiddenFile, "hidden")
+	mustWriteFile(t, subFile, "nested")
+
+	e := &Exporter{
+		ExporterConfig: ExporterConfig{
+			Directory:      tmpDir,
+			CleanupDeleted: true,
+		},
+		exportedFiles: map[string]struct{}{},
+	}
+
+	if err := e.cleanupDeletedPages(); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	assertExists(t, hiddenFile)
+	assertExists(t, subFile)
+}
+
+func TestCleanupDeletedPagesSkipsIncrementalExport(t *testing.T) {
+	tmpDir := t.TempDir()
+	staleFile := filepath.Join(tmpDir, "stale.md")
+	mustWriteFile(t, staleFile, "stale")
+
+	e := &Exporter{
+		ExporterConfig: ExporterConfig{
+			Directory:      tmpDir,
+			CleanupDeleted: true,
+			LookbackDays:   1,
+		},
+		exportedFiles: map[string]struct{}{},
+	}
+
+	if err := e.cleanupDeletedPages(); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	assertExists(t, staleFile)
+}
+
+func TestCleanupDeletedPagesSkipsExecOne(t *testing.T) {
+	tmpDir := t.TempDir()
+	staleFile := filepath.Join(tmpDir, "stale.md")
+	mustWriteFile(t, staleFile, "stale")
+
+	e := &Exporter{
+		ExecOne: "page-id",
+		ExporterConfig: ExporterConfig{
+			Directory:      tmpDir,
+			CleanupDeleted: true,
+		},
+		exportedFiles: map[string]struct{}{},
+	}
+
+	if err := e.cleanupDeletedPages(); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	assertExists(t, staleFile)
+}
+
+func TestCleanupDeletedPagesDisabledPreservesFiles(t *testing.T) {
+	tmpDir := t.TempDir()
+	staleFile := filepath.Join(tmpDir, "stale.md")
+	mustWriteFile(t, staleFile, "stale")
+
+	e := &Exporter{
+		ExporterConfig: ExporterConfig{
+			Directory:      tmpDir,
+			CleanupDeleted: false,
+		},
+		exportedFiles: map[string]struct{}{},
+	}
+
+	if err := e.cleanupDeletedPages(); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	assertExists(t, staleFile)
+}
+
+func mustWriteFile(t *testing.T, path string, content string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatalf("write file failed: %v", err)
+	}
+}
+
+func assertExists(t *testing.T, path string) {
+	t.Helper()
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("expected file to exist: %v", err)
+	}
+}
+
+func assertNotExists(t *testing.T, path string) {
+	t.Helper()
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("expected file to be deleted: %v, stat err: %v", path, err)
+	}
+}
+
 func TestGetExportFilenameSlugifiesTitle(t *testing.T) {
 	tmpDir := t.TempDir()
 	e := &Exporter{ExporterConfig: ExporterConfig{Directory: tmpDir, UseTitleAsFilename: true}}
