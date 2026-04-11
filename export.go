@@ -56,6 +56,8 @@ type Exporter struct {
 
 	exportedFilesMu sync.Mutex
 	exportedFiles   map[string]struct{}
+
+	slugger transformer.SlugRegistry
 }
 
 func (e *Exporter) Validate() error {
@@ -148,16 +150,17 @@ func (e *Exporter) Run() error {
 	close(e.queryPool)
 	queryWg.Wait()
 
-	if err := e.cleanupDeletedPages(); err != nil {
-		return err
-	}
-
 	select {
 	case err := <-errChan:
 		return err
 	default:
-		return nil
 	}
+
+	if err := e.cleanupDeletedPages(); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (e *Exporter) ScanPages() (chan []notion.Page, chan error) {
@@ -334,8 +337,8 @@ func (e *Exporter) exportPage(page notion.Page) error {
 }
 
 func (e *Exporter) getExportFilename(page notion.Page) string {
-	filename := filepath.Join(e.Directory, transformer.SimpleID(page.ID)+".md")
-	// TODO slug the title?
+	slug := transformer.SimpleID(page.ID)
+
 	if e.UseTitleAsFilename {
 		if title, err := transformer.GetPageTitle(page); err == nil {
 			if len(e.ReplaceTitle) == 2 {
@@ -343,10 +346,17 @@ func (e *Exporter) getExportFilename(page notion.Page) string {
 			}
 			title = strings.TrimSpace(title)
 
-			filename = filepath.Join(e.Directory, title+".md")
+			if cleaned := transformer.SlugifyTitle(title, transformer.MaxSlugLength); cleaned != "" {
+				slug = cleaned
+			}
+
+			slug = e.slugger.Register(slug, page.ID)
+		} else {
+			slug = e.slugger.Register(slug, page.ID)
 		}
 	}
-	return filename
+
+	return filepath.Join(e.Directory, slug+".md")
 }
 
 func (e *Exporter) trackExportedFile(filename string) {
