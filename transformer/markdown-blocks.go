@@ -347,7 +347,20 @@ func (m *Markdown) markdownChildPage(env *markdownEnv, block *notion.ChildPageBl
 }
 
 func (m *Markdown) markdownChildDatabase(env *markdownEnv, block *notion.ChildDatabaseBlock) {
-	m.writeInternalLink(env, block.ID(), block.Title)
+	title := block.Title
+	if title == "" {
+		title = "Untitled"
+	}
+
+	if env.m.config.PlainText {
+		env.b.WriteString(env.indent)
+		env.b.WriteString("Child database: ")
+		env.b.WriteString(title)
+		env.b.WriteString("\n\n")
+		return
+	}
+
+	m.markdownPlaceholder(env, fmt.Sprintf("Child database: %s", title))
 }
 
 func (m *Markdown) markdownCallout(env *markdownEnv, block *notion.CalloutBlock) {
