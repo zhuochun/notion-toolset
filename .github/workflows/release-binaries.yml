@@ -1,0 +1,109 @@
+name: release-binaries
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: build-${{ matrix.goos }}-${{ matrix.goarch }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: darwin
+            goarch: amd64
+            ext: ""
+            archive: tar.gz
+          - goos: darwin
+            goarch: arm64
+            ext: ""
+            archive: tar.gz
+          - goos: linux
+            goarch: amd64
+            ext: ""
+            archive: tar.gz
+          - goos: linux
+            goarch: arm64
+            ext: ""
+            archive: tar.gz
+          - goos: windows
+            goarch: amd64
+            ext: ".exe"
+            archive: zip
+          - goos: windows
+            goarch: arm64
+            ext: ".exe"
+            archive: zip
+
+    env:
+      CGO_ENABLED: 0
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Resolve version
+        id: version
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "release" ]]; then
+            VERSION="${{ github.event.release.tag_name }}"
+          else
+            VERSION="${{ github.ref_name }}"
+          fi
+          echo "value=${VERSION}" >> "${GITHUB_OUTPUT}"
+
+      - name: Build binary
+        shell: bash
+        run: |
+          mkdir -p dist
+          BIN_NAME="notion-toolset"
+          TARGET="${BIN_NAME}_${{ steps.version.outputs.value }}_${{ matrix.goos }}_${{ matrix.goarch }}${{ matrix.ext }}"
+          GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build -trimpath -ldflags="-s -w" -o "dist/${TARGET}" .
+
+      - name: Package artifact
+        id: package
+        shell: bash
+        run: |
+          BIN_NAME="notion-toolset"
+          TARGET="${BIN_NAME}_${{ steps.version.outputs.value }}_${{ matrix.goos }}_${{ matrix.goarch }}${{ matrix.ext }}"
+          if [[ "${{ matrix.archive }}" == "zip" ]]; then
+            ARCHIVE="${TARGET}.zip"
+            (cd dist && zip -q "${ARCHIVE}" "${TARGET}")
+          else
+            ARCHIVE="${TARGET}.tar.gz"
+            tar -C dist -czf "dist/${ARCHIVE}" "${TARGET}"
+          fi
+          (cd dist && sha256sum "${ARCHIVE}" > "${ARCHIVE}.sha256")
+          echo "archive=${ARCHIVE}" >> "${GITHUB_OUTPUT}"
+
+      - name: Upload CI artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.package.outputs.archive }}
+          path: |
+            dist/${{ steps.package.outputs.archive }}
+            dist/${{ steps.package.outputs.archive }}.sha256
+          if-no-files-found: error
+
+      - name: Upload release assets
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/${{ steps.package.outputs.archive }}
+            dist/${{ steps.package.outputs.archive }}.sha256
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
