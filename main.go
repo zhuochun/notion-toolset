@@ -19,6 +19,9 @@ var (
 	flagRepeat     = flag.Int("repeat", 1, "Repeat this command")                                 // start with default 1 time
 	flagConfigPath = flag.String("config", "", "Path to config file")
 	flagDebugMode  = flag.Bool("debug", false, "Enable debug mode")
+	flagMode       = flag.String("mode", "dry-run", "Command mode")
+	flagWorkspace  = flag.String("workspace", "https://www.notion.so", "Notion workspace host or base URL for upload resolve mode")
+	flagPort       = flag.Int("port", 17889, "Local port for upload resolve mode UI")
 )
 
 var (
@@ -131,6 +134,15 @@ func runCmd(notionClient *notion.Client, cfg Config) {
 		cmd = &Exporter{
 			DebugMode:      *flagDebugMode,
 			ExecOne:        *flagExecOne,
+			Client:         notionClient,
+			ExporterConfig: cfg.Exporter,
+		}
+	case "upload": // compare local uncommitted exports and upload changed content back to Notion
+		cmd = &ReverseUploader{
+			DebugMode:      *flagDebugMode,
+			Mode:           *flagMode,
+			Workspace:      *flagWorkspace,
+			ResolvePort:    *flagPort,
 			Client:         notionClient,
 			ExporterConfig: cfg.Exporter,
 		}

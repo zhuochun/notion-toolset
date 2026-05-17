@@ -12,6 +12,7 @@ Automate recurring Notion workflows with a small command-line tool.
 - Flashback resurfacing for older pages
 - Page collection into a destination block
 - Markdown export and backup of database pages
+- Reverse upload of changed local markdown exports back to Notion
 - LLM-driven summarization or prompt execution on page content
 
 ## Setup Flow
@@ -113,6 +114,7 @@ Each run uses one command plus one config file.
 - `flashback`
 - `collector`
 - `export`
+- `upload`
 - `llm`
 
 Example:
@@ -120,6 +122,20 @@ Example:
 ```bash
 ./notion-toolset --cmd=export --config=./configs/export.yaml
 ```
+
+Reverse upload uses the same exporter config and only scans uncommitted files under `exporter.directory`.
+
+```bash
+./notion-toolset --cmd=upload --config=./configs/export.yaml
+./notion-toolset --cmd=upload --config=./configs/export.yaml --mode=discard
+./notion-toolset --cmd=upload --config=./configs/export.yaml --mode=upload
+./notion-toolset --cmd=upload --config=./configs/export.yaml --mode=resolve --workspace=https://www.notion.so/your-workspace
+./notion-toolset --cmd=upload --config=./configs/export.yaml --mode=resolve --workspace=your-workspace
+./notion-toolset --cmd=upload --config=./configs/export.yaml --mode=resolve --workspace=your-workspace.notion.site
+./notion-toolset --cmd=upload --config=./configs/export.yaml --mode=resolve --port=17889
+```
+
+`resolve` starts a local web UI with file list and unified diffs on `127.0.0.1:17889` by default (override with `--port`). `workspace` accepts full URL, host (`your-workspace.notion.site`), or workspace path segment (`your-workspace`). It loads file list first, and compares/exports Notion content only when you select a file. Use it to open the page in Notion and discard a local file from the browser.
 
 ## Troubleshooting
 
