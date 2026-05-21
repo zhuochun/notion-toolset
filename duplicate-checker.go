@@ -33,6 +33,10 @@ type DuplicateChecker struct {
 	DuplicateCheckerConfig
 }
 
+var duplicateURLHTTPClient = &http.Client{
+	Timeout: 10 * time.Second,
+}
+
 func (d *DuplicateChecker) Validate() error {
 	if len(d.DuplicateDumpTextBlock) == 0 {
 		return errors.Join(ErrConfigRequired, fmt.Errorf("set duplicateDumpTextBlock"))
@@ -44,6 +48,7 @@ func (d *DuplicateChecker) Run() error {
 	pagesChan, errChan := d.ScanPages()
 	pageNum := 0
 	set := map[string]string{}
+	reported := map[string]struct{}{}
 	for pages := range pagesChan {
 		for _, page := range pages {
 			pageNum += 1
@@ -52,8 +57,12 @@ func (d *DuplicateChecker) Run() error {
 			if len(keys) != 0 {
 				for _, key := range keys {
 					if id, ok := set[key]; ok {
-						d.WriteBlock(page.ID)
-						d.WriteBlock(id)
+						if err := d.reportDuplicatePage(reported, id); err != nil {
+							return err
+						}
+						if err := d.reportDuplicatePage(reported, page.ID); err != nil {
+							return err
+						}
 					} else {
 						set[key] = page.ID
 					}
@@ -61,7 +70,9 @@ func (d *DuplicateChecker) Run() error {
 			}
 
 			if d.brokenURLCheck(page) {
-				d.WriteBlock(page.ID)
+				if err := d.reportDuplicatePage(reported, page.ID); err != nil {
+					return err
+				}
 			}
 
 			if d.DebugMode && pageNum%500 == 0 {
@@ -77,6 +88,17 @@ func (d *DuplicateChecker) Run() error {
 	default:
 		return nil
 	}
+}
+
+func (d *DuplicateChecker) reportDuplicatePage(reported map[string]struct{}, pageID string) error {
+	if _, ok := reported[pageID]; ok {
+		return nil
+	}
+	if _, err := d.WriteBlock(pageID); err != nil {
+		return err
+	}
+	reported[pageID] = struct{}{}
+	return nil
 }
 
 func (d *DuplicateChecker) ScanPages() (chan []notion.Page, chan error) {
@@ -191,7 +213,26 @@ func (d *DuplicateChecker) brokenURLCheck(page notion.Page) bool {
 		return false
 	}
 
-	resp, err := http.Head(urlStr)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodHead, urlStr, nil)
+	if err != nil {
+		return true
+	}
+	resp, err := duplicateURLHTTPClient.Do(req)
+	if err != nil || resp.StatusCode == http.StatusMethodNotAllowed || resp.StatusCode == http.StatusNotImplemented {
+		if resp != nil && resp.Body != nil {
+			resp.Body.Close()
+		}
+		getReq, getErr := http.NewRequestWithContext(context.Background(), http.MethodGet, urlStr, nil)
+		if getErr != nil {
+			return true
+		}
+		getResp, getErr := duplicateURLHTTPClient.Do(getReq)
+		if getErr != nil {
+			return true
+		}
+		defer getResp.Body.Close()
+		return getResp.StatusCode >= http.StatusBadRequest
+	}
 	if err != nil {
 		return true
 	}

@@ -22,6 +22,10 @@ import (
 	"golang.org/x/time/rate"
 )
 
+var exportAssetHTTPClient = &http.Client{
+	Timeout: 30 * time.Second,
+}
+
 type ExporterConfig struct {
 	DatabaseID    string `yaml:"databaseID"`
 	DatabaseQuery string `yaml:"databaseQuery"`
@@ -497,7 +501,12 @@ func (e *Exporter) downloadAsset(asset *transformer.AssetFuture) (string, error)
 	}
 	defer file.Close()
 
-	resp, err := http.Get(asset.URL)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, asset.URL, nil)
+	if err != nil {
+		return "", err
+	}
+
+	resp, err := exportAssetHTTPClient.Do(req)
 	if err != nil {
 		return "", err
 	}

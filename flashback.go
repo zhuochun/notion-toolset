@@ -43,7 +43,9 @@ func (f *Flashback) Validate() error {
 }
 
 func (f *Flashback) Run() error {
-	f.SetFlashbackPageID()
+	if err := f.SetFlashbackPageID(); err != nil {
+		return err
+	}
 
 	maxHours := int(time.Since(f.OldestTimestamp).Hours())
 	// use a random hour to lookback
@@ -130,9 +132,9 @@ func (f *Flashback) GetPages(lookback time.Duration) ([]notion.Page, error) {
 	return q.Once(context.TODO())
 }
 
-func (f *Flashback) SetFlashbackPageID() {
+func (f *Flashback) SetFlashbackPageID() error {
 	if f.FlashbackJournalID == "" {
-		return
+		return nil
 	}
 
 	now := time.Now()
@@ -153,7 +155,10 @@ func (f *Flashback) SetFlashbackPageID() {
 
 	pages, err := q.Once(context.TODO())
 	if err != nil {
-		log.Panicf("No journal found: %v, err: %v", title, err)
+		return fmt.Errorf("no journal found for %v: %w", title, err)
+	}
+	if len(pages) == 0 {
+		return fmt.Errorf("no journal found for %v", title)
 	}
 
 	if len(pages) > 1 {
@@ -165,6 +170,7 @@ func (f *Flashback) SetFlashbackPageID() {
 	}
 
 	f.FlashbackPageID = pages[0].ID
+	return nil
 }
 
 func (f *Flashback) WriteBlock(pageID string) (notion.BlockChildrenResponse, error) {

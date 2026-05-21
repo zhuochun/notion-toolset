@@ -66,6 +66,9 @@ func main() {
 		if *flagDebugMode {
 			log.Printf("MultiConfig len: %v", len(configs))
 		}
+		if *flagMultiIdx >= len(configs) {
+			log.Fatalf("config index out of range: idx=%d, len=%d", *flagMultiIdx, len(configs))
+		}
 
 		repeat(func() {
 			if *flagMultiIdx >= 0 {

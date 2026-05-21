@@ -155,8 +155,9 @@ func (m *LangModel) ScanPages() (chan []notion.Page, chan error) {
 
 func (m *LangModel) scanDirectPages(pageIDs []string) (chan []notion.Page, chan error) {
 	pagesChan := make(chan []notion.Page, len(pageIDs))
-	errChan := make(chan error, 1)
+	errChan := make(chan error, len(pageIDs))
 
+	var errs []error
 	for _, pageID := range pageIDs {
 		if pageID == "" {
 			continue
@@ -166,11 +167,15 @@ func (m *LangModel) scanDirectPages(pageIDs []string) (chan []notion.Page, chan 
 		if page, err := m.Client.FindPageByID(context.Background(), pageID); err == nil {
 			pagesChan <- []notion.Page{page}
 		} else {
-			errChan <- err
+			errs = append(errs, fmt.Errorf("find page by id %v: %w", pageID, err))
 		}
 	}
 
+	for _, err := range errs {
+		errChan <- err
+	}
 	close(pagesChan)
+	close(errChan)
 	return pagesChan, errChan
 }
 
