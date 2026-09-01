@@ -25,6 +25,8 @@ type Collector struct {
 	CollectorConfig
 }
 
+const collectorWriteBatchSize = 100
+
 func (c *Collector) Validate() error {
 	if len(c.CollectDumpTextBlock) == 0 {
 		return errors.Join(ErrConfigRequired, fmt.Errorf("set collectDumpTextBlock"))
@@ -63,21 +65,15 @@ func (c *Collector) Run() error {
 	default:
 	}
 
-	errNum := 0
-	for _, newPageID := range newPages {
-		if _, err := c.WriteBlock(newPageID); err != nil {
-			errNum += 1
-
-			log.Printf("Failed to write block with PageID: %v, err: %v", newPageID, err)
-		}
-	}
-	log.Printf("Updated new pages. Succeed: %d, failed: %d", len(newPages)-errNum, errNum)
+	succeeded, failed := c.WriteBlocks(newPages)
+	log.Printf("Updated new pages. Succeed: %d, failed: %d", succeeded, failed)
 
 	return nil
 }
 
 func (c *Collector) GetCollected() (map[string]bool, error) {
 	collected := map[string]bool{}
+	visited := map[string]struct{}{}
 
 	scanIDs := c.CollectionIDs
 	nextScanIDs := []string{}
@@ -87,6 +83,11 @@ func (c *Collector) GetCollected() (map[string]bool, error) {
 		}
 
 		for _, blockID := range scanIDs {
+			if _, ok := visited[blockID]; ok {
+				continue
+			}
+			visited[blockID] = struct{}{}
+
 			blocks, err := c.GetCollectionBlocks(blockID)
 			if err != nil {
 				return nil, fmt.Errorf("get collection blocks %s: %w", blockID, err)
@@ -168,14 +169,34 @@ func (c *Collector) ScanPages() (chan []notion.Page, chan error) {
 	return q.Go(context.TODO(), 3)
 }
 
-func (c *Collector) WriteBlock(pageID string) (notion.BlockChildrenResponse, error) {
-	w := NewAppendBlock(c.Client, c.CollectDumpID)
+func (c *Collector) WriteBlocks(pageIDs []string) (succeeded, failed int) {
+	for start := 0; start < len(pageIDs); start += collectorWriteBatchSize {
+		end := min(start+collectorWriteBatchSize, len(pageIDs))
+		batch := pageIDs[start:end]
+		w := NewAppendBlock(c.Client, c.CollectDumpID)
+		batchReady := true
 
-	if err := w.AddParagraph("Collector", c.CollectDumpTextBlock, BlockBuilder{
-		PageID: pageID,
-	}); err != nil {
-		return notion.BlockChildrenResponse{}, err
+		for _, pageID := range batch {
+			if err := w.AddParagraph("Collector", c.CollectDumpTextBlock, BlockBuilder{
+				PageID: pageID,
+			}); err != nil {
+				failed += len(batch)
+				batchReady = false
+				log.Printf("Failed to build collection block batch. Pages: %d, first PageID: %v, err: %v", len(batch), batch[0], err)
+				break
+			}
+		}
+		if !batchReady {
+			continue
+		}
+		if _, err := w.Do(context.TODO()); err != nil {
+			failed += len(batch)
+			log.Printf("Failed to write collection block batch. Pages: %d, first PageID: %v, err: %v", len(batch), batch[0], err)
+			continue
+		}
+
+		succeeded += len(batch)
 	}
 
-	return w.Do(context.TODO())
+	return succeeded, failed
 }
