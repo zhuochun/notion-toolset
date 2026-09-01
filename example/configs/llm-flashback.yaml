@@ -23,7 +23,7 @@ flashback:
   flashbackNum: 1 # How many flashback to create
   flashbackPageID: aaaabbbbccccddddeeee # Write to BlockID
   flashbackChainFile: "flashchain.txt" # Also write the ID to a chain file, to pick up by llm-summary
-  flashbackPageBlock: >
+  flashbackTextBlock: >
     {
         "rich_text": [
             {

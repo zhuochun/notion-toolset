@@ -16,7 +16,7 @@ collector:
   collectionIDs: # To remove collected items from this block, Optional
     - aaaabbbbccccddddeeee
   collectDumpID: aaaabbbbccccddddeeee # Write to BlockID
-  collectDumpBlock: >
+  collectDumpTextBlock: >
     {
         "rich_text": [
             {

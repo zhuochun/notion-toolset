@@ -9,7 +9,11 @@ permissions:
   contents: write
 
 jobs:
+  verify:
+    uses: ./.github/workflows/verify.yml
+
   build:
+    needs: verify
     name: build-${{ matrix.goos }}-${{ matrix.goarch }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20

@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"regexp"
@@ -46,6 +47,15 @@ type Cmd interface {
 	Run() error
 }
 
+type CommandOptions struct {
+	Name        string
+	ExecOne     string
+	DebugMode   bool
+	Mode        string
+	Workspace   string
+	ResolvePort int
+}
+
 func main() {
 	flag.Parse()
 
@@ -60,6 +70,19 @@ func main() {
 	}
 
 	notionClient := newNotionClient()
+	commandOptions := CommandOptions{
+		Name:        *flagCmd,
+		ExecOne:     *flagExecOne,
+		DebugMode:   *flagDebugMode,
+		Mode:        *flagMode,
+		Workspace:   *flagWorkspace,
+		ResolvePort: *flagPort,
+	}
+	run := func(cfg Config) {
+		if err := runCmd(notionClient, cfg, commandOptions); err != nil {
+			log.Fatal(err)
+		}
+	}
 
 	if *flagMulti {
 		configs := loadMultiConfig(*flagConfigPath)
@@ -72,10 +95,10 @@ func main() {
 
 		repeat(func() {
 			if *flagMultiIdx >= 0 {
-				runCmd(notionClient, configs[*flagMultiIdx])
+				run(configs[*flagMultiIdx])
 			} else {
 				for _, cfg := range configs {
-					runCmd(notionClient, cfg)
+					run(cfg)
 				}
 			}
 		}, *flagRepeat)
@@ -83,7 +106,7 @@ func main() {
 		config := loadConfig(*flagConfigPath)
 
 		repeat(func() {
-			runCmd(notionClient, config)
+			run(config)
 		}, *flagRepeat)
 	}
 }
@@ -94,81 +117,91 @@ func repeat(do func(), times int) {
 	}
 }
 
-func runCmd(notionClient *notion.Client, cfg Config) {
-	if *flagDebugMode {
-		log.Printf("Run cmd: %v, config: %+v", *flagCmd, cfg)
+func runCmd(notionClient *notion.Client, cfg Config, opts CommandOptions) error {
+	if opts.DebugMode {
+		log.Printf("Run cmd: %v, config: %+v", opts.Name, cfg)
 	} else {
-		log.Printf("Run cmd: %v", *flagCmd)
+		log.Printf("Run cmd: %v", opts.Name)
 	}
 
-	var cmd Cmd
-	switch *flagCmd {
-	case "daily-journal": // create daily journal entries with title YYYY-MM-DD
-		cmd = &DailyJournal{
-			DebugMode:          *flagDebugMode,
-			Client:             notionClient,
-			DailyJournalConfig: cfg.DailyJournal,
-		}
-	case "weekly-journal": // create weekly journal entries with title like YYYY-MM-DD/YYYY-MM-DD
-		cmd = &WeeklyJournal{
-			DebugMode:           *flagDebugMode,
-			Client:              notionClient,
-			WeeklyJournalConfig: cfg.WeeklyJournal,
-		}
-	case "flashback": // get a random page from a database and resurface it
-		cmd = &Flashback{
-			DebugMode:       *flagDebugMode,
-			Client:          notionClient,
-			FlashbackConfig: cfg.Flashback,
-		}
-	case "duplicate": // find duplicated pages (same title) in a database
-		cmd = &DuplicateChecker{
-			DebugMode:              *flagDebugMode,
-			Client:                 notionClient,
-			DuplicateCheckerConfig: cfg.DuplicateChecker,
-		}
-	case "collector": // find certain pages from a database and dump the delta pages in a page
-		cmd = &Collector{
-			DebugMode:       *flagDebugMode,
-			Client:          notionClient,
-			CollectorConfig: cfg.Collector,
-		}
-	case "export": // export pages from a database into local folders in markdown
-		cmd = &Exporter{
-			DebugMode:      *flagDebugMode,
-			ExecOne:        *flagExecOne,
-			Client:         notionClient,
-			ExporterConfig: cfg.Exporter,
-		}
-	case "upload": // compare local uncommitted exports and upload changed content back to Notion
-		cmd = &ReverseUploader{
-			DebugMode:      *flagDebugMode,
-			Mode:           *flagMode,
-			Workspace:      *flagWorkspace,
-			ResolvePort:    *flagPort,
-			Client:         notionClient,
-			ExporterConfig: cfg.Exporter,
-		}
-	case "llm": // run custom prompt on pages from a database
-		cmd = &LangModel{
-			DebugMode:       *flagDebugMode,
-			ExecOne:         *flagExecOne,
-			Client:          notionClient,
-			LangModelConfig: cfg.LLM,
-		}
-	default:
-		log.Fatalf("Unknown cmd: `%v`", *flagCmd)
+	cmd, err := newCommand(notionClient, cfg, opts)
+	if err != nil {
+		return err
 	}
+	return executeCommand(opts.Name, cmd)
+}
 
+func executeCommand(name string, cmd Cmd) error {
 	if err := cmd.Validate(); err != nil {
-		log.Fatalf("cmd %v validate failed: %+v", *flagCmd, err)
+		return fmt.Errorf("cmd %v validate failed: %w", name, err)
 	}
 
 	if err := cmd.Run(); err != nil {
-		log.Fatalf("cmd %v error: %+v", *flagCmd, err)
+		return fmt.Errorf("cmd %v error: %w", name, err)
 	}
 
-	log.Printf("cmd %v completed", *flagCmd)
+	log.Printf("cmd %v completed", name)
+	return nil
+}
+
+func newCommand(notionClient *notion.Client, cfg Config, opts CommandOptions) (Cmd, error) {
+	switch opts.Name {
+	case "daily-journal": // create daily journal entries with title YYYY-MM-DD
+		return &DailyJournal{
+			DebugMode:          opts.DebugMode,
+			Client:             notionClient,
+			DailyJournalConfig: cfg.DailyJournal,
+		}, nil
+	case "weekly-journal": // create weekly journal entries with title like YYYY-MM-DD/YYYY-MM-DD
+		return &WeeklyJournal{
+			DebugMode:           opts.DebugMode,
+			Client:              notionClient,
+			WeeklyJournalConfig: cfg.WeeklyJournal,
+		}, nil
+	case "flashback": // get a random page from a database and resurface it
+		return &Flashback{
+			DebugMode:       opts.DebugMode,
+			Client:          notionClient,
+			FlashbackConfig: cfg.Flashback,
+		}, nil
+	case "duplicate": // find duplicated pages (same title) in a database
+		return &DuplicateChecker{
+			DebugMode:              opts.DebugMode,
+			Client:                 notionClient,
+			DuplicateCheckerConfig: cfg.DuplicateChecker,
+		}, nil
+	case "collector": // find certain pages from a database and dump the delta pages in a page
+		return &Collector{
+			DebugMode:       opts.DebugMode,
+			Client:          notionClient,
+			CollectorConfig: cfg.Collector,
+		}, nil
+	case "export": // export pages from a database into local folders in markdown
+		return &Exporter{
+			DebugMode:      opts.DebugMode,
+			ExecOne:        opts.ExecOne,
+			Client:         notionClient,
+			ExporterConfig: cfg.Exporter,
+		}, nil
+	case "upload": // compare local uncommitted exports and upload changed content back to Notion
+		return &ReverseUploader{
+			DebugMode:      opts.DebugMode,
+			Mode:           opts.Mode,
+			Workspace:      opts.Workspace,
+			ResolvePort:    opts.ResolvePort,
+			Client:         notionClient,
+			ExporterConfig: cfg.Exporter,
+		}, nil
+	case "llm": // run custom prompt on pages from a database
+		return &LangModel{
+			DebugMode:       opts.DebugMode,
+			ExecOne:         opts.ExecOne,
+			Client:          notionClient,
+			LangModelConfig: cfg.LLM,
+		}, nil
+	default:
+		return nil, fmt.Errorf("unknown cmd: `%v`", opts.Name)
+	}
 }
 
 func newNotionClient() *notion.Client {
