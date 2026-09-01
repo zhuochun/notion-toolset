@@ -207,9 +207,7 @@ func (m *Markdown) markdownPlainChildren(env *markdownEnv, block notion.Block) {
 		return
 	}
 
-	m.loadChildren(block.ID())
-
-	blocks, err := m.getChildren(block.ID())
+	blocks, err := m.snapshot.Children(block.ID())
 	if err != nil {
 		log.Printf("Error fetch children of id: %v, page: %+v, err: %v", block.ID(), block.Parent(), err)
 	}
@@ -274,9 +272,7 @@ func (m *Markdown) markdownSublistChildren(env *markdownEnv, block notion.Block)
 		return
 	}
 
-	m.loadChildren(block.ID())
-
-	blocks, err := m.getChildren(block.ID())
+	blocks, err := m.snapshot.Children(block.ID())
 	if err != nil {
 		log.Printf("Error fetch children of id: %v, page: %+v, err: %v", block.ID(), block.Parent(), err)
 	}
@@ -677,9 +673,7 @@ func (m *Markdown) markdownSyncedBlock(env *markdownEnv, block *notion.SyncedBlo
 }
 
 func (m *Markdown) markdownSyncedFromBlock(env *markdownEnv, block *notion.SyncedBlock) {
-	m.loadChildren(block.SyncedFrom.BlockID)
-
-	blocks, err := m.getChildren(block.SyncedFrom.BlockID)
+	blocks, err := m.snapshot.Children(block.SyncedFrom.BlockID)
 	if err != nil {
 		log.Printf("Error fetch children of id: %v, page: %+v, err: %v", block.ID(), block.Parent(), err)
 	}

@@ -20,6 +20,7 @@ import (
 	"sync"
 
 	"github.com/dstotijn/go-notion"
+	"github.com/zhuochun/notion-toolset/notionread"
 	"github.com/zhuochun/notion-toolset/transformer"
 	"golang.org/x/time/rate"
 )
@@ -40,8 +41,9 @@ type ReverseUploader struct {
 	Client *notion.Client
 	ExporterConfig
 
-	repoRoot string
-	exporter *Exporter
+	repoRoot   string
+	exporter   *Exporter
+	downloadWg *sync.WaitGroup
 
 	resolveMu    sync.Mutex
 	resolveFiles []reverseResolveFile
@@ -178,25 +180,16 @@ func (r *ReverseUploader) startExporter() {
 		ExporterConfig: r.ExporterConfig,
 		queryLimiter:   rate.NewLimiter(rate.Limit(r.ExportSpeed), int(r.ExportSpeed)),
 	}
+	r.exporter.notionReader = r.exporter.newReader()
 
-	queryWg := new(sync.WaitGroup)
-	r.exporter.queryPool = r.exporter.StartQuerier(queryWg, int(r.ExportSpeed))
-	downloadWg := new(sync.WaitGroup)
-	r.exporter.downloadPool = r.exporter.StartDownloader(downloadWg, int(r.ExportSpeed)*2)
-
-	r.exporter.exportPool = make(chan notion.Page)
-	go func() {
-		<-r.exporter.exportPool
-		close(r.exporter.queryPool)
-		queryWg.Wait()
-		close(r.exporter.downloadPool)
-		downloadWg.Wait()
-	}()
+	r.downloadWg = new(sync.WaitGroup)
+	r.exporter.downloadPool = r.exporter.StartDownloader(r.downloadWg, int(r.ExportSpeed)*2)
 }
 
 func (r *ReverseUploader) stopExporter() {
-	if r.exporter != nil && r.exporter.exportPool != nil {
-		r.exporter.exportPool <- notion.Page{}
+	if r.exporter != nil && r.exporter.downloadPool != nil {
+		close(r.exporter.downloadPool)
+		r.downloadWg.Wait()
 	}
 }
 
@@ -361,17 +354,17 @@ func (r *ReverseUploader) appendResolveFile(row reverseResolveFile) {
 }
 
 func (r *ReverseUploader) exportPageMarkdown(pageID string) (string, notion.Page, error) {
-	page, err := r.exporter.findPageByIDWithRetry(context.Background(), pageID)
+	page, err := r.exporter.reader().Page(context.Background(), pageID)
 	if err != nil {
 		return "", notion.Page{}, err
 	}
-	blocks, err := r.exporter.QueryBlocks(page.ID)
+	snapshot, err := r.exporter.reader().BlockSnapshot(context.Background(), page.ID, notionread.BestEffort)
 	if err != nil {
 		return "", notion.Page{}, err
 	}
 
 	var out bytes.Buffer
-	t := transformer.New(r.Markdown, &page, blocks, r.exporter.queryPool, r.exporter.downloadPool)
+	t := transformer.New(r.Markdown, &page, snapshot, r.exporter.downloadPool)
 	t.TransformOut(&out)
 	return out.String(), page, nil
 }
@@ -419,7 +412,7 @@ func (r *ReverseUploader) uploadPage(page notion.Page, local []byte) error {
 	}
 
 	blocks := markdownToNotionBlocks(body)
-	children, err := r.exporter.QueryBlocks(page.ID)
+	children, err := r.exporter.reader().BlockChildren(context.Background(), page.ID)
 	if err != nil {
 		return err
 	}

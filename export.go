@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/dstotijn/go-notion"
+	"github.com/zhuochun/notion-toolset/notionread"
 	"github.com/zhuochun/notion-toolset/transformer"
 	"golang.org/x/time/rate"
 )
@@ -52,9 +53,9 @@ type Exporter struct {
 	ExporterConfig
 
 	queryLimiter *rate.Limiter
+	notionReader *notionread.Reader
 
 	exportPool   chan notion.Page
-	queryPool    chan *transformer.BlockFuture
 	downloadPool chan *transformer.AssetFuture
 
 	exportedFilesMu sync.Mutex
@@ -117,31 +118,26 @@ func (e *Exporter) precheckDir(dir string) error {
 
 func (e *Exporter) Run() error {
 	e.queryLimiter = rate.NewLimiter(rate.Limit(e.ExportSpeed), int(e.ExportSpeed))
+	e.notionReader = e.newReader()
 	e.exportedFiles = map[string]struct{}{}
 
 	// workers to write markdowns
 	exportWg := new(sync.WaitGroup)
 	e.exportPool = e.StartExporter(exportWg, int(e.ExportSpeed))
-	// workers to query content of notion blocks
-	queryWg := new(sync.WaitGroup)
-	e.queryPool = e.StartQuerier(queryWg, int(e.ExportSpeed))
 	// workers to download assets
 	downloadWg := new(sync.WaitGroup)
 	e.downloadPool = e.StartDownloader(downloadWg, int(e.ExportSpeed)*2)
 
 	// query database pages, queue each pages for export
-	pagesChan, errChan := e.ScanPages()
 	pageNum := 0
-	for pages := range pagesChan {
-		for _, page := range pages {
-			pageNum += 1
-			e.exportPool <- page
-
-			if e.DebugMode && pageNum%500 == 0 {
-				log.Printf("Scanned pages: %v so far", pageNum)
-			}
+	scanErr := e.ScanPages(context.Background(), func(page notion.Page) error {
+		pageNum++
+		e.exportPool <- page
+		if e.DebugMode && pageNum%500 == 0 {
+			log.Printf("Scanned pages: %v so far", pageNum)
 		}
-	}
+		return nil
+	})
 	log.Printf("Scanned pages: %v", pageNum)
 
 	close(e.exportPool)
@@ -150,13 +146,8 @@ func (e *Exporter) Run() error {
 	close(e.downloadPool)
 	downloadWg.Wait()
 
-	close(e.queryPool)
-	queryWg.Wait()
-
-	select {
-	case err := <-errChan:
-		return err
-	default:
+	if scanErr != nil {
+		return scanErr
 	}
 
 	if err := e.cleanupDeletedPages(); err != nil {
@@ -166,25 +157,19 @@ func (e *Exporter) Run() error {
 	return nil
 }
 
-func (e *Exporter) ScanPages() (chan []notion.Page, chan error) {
+func (e *Exporter) ScanPages(ctx context.Context, visit func(notion.Page) error) error {
 	if e.ExecOne != "" {
-		pagesChan := make(chan []notion.Page, 1)
-		errChan := make(chan error, 1)
-
-		if page, err := e.findPageByIDWithRetry(context.Background(), e.ExecOne); err == nil {
-			pagesChan <- []notion.Page{page}
-		} else {
-			errChan <- err
+		page, err := e.reader().Page(ctx, e.ExecOne)
+		if err != nil {
+			return err
 		}
-
-		close(pagesChan)
-		return pagesChan, errChan
+		return visit(page)
 	}
 
-	return e.scanDatabasePages()
+	return e.scanDatabasePages(ctx, visit)
 }
 
-func (e *Exporter) scanDatabasePages() (chan []notion.Page, chan error) {
+func (e *Exporter) scanDatabasePages(ctx context.Context, visit func(notion.Page) error) error {
 	q := NewDatabaseQuery(e.Client, e.DatabaseID)
 
 	date := "" // default
@@ -196,61 +181,12 @@ func (e *Exporter) scanDatabasePages() (chan []notion.Page, chan error) {
 		log.Panicf("Invalid query: %v, err: %v", e.DatabaseQuery, err)
 	}
 
-	if e.DebugLimit > 0 {
-		q.Query.PageSize = e.DebugLimit
-	}
-
 	if e.DebugMode {
 		log.Printf("DatabaseQuery Filter: %+v", q.Query.Filter)
 		log.Printf("DatabaseQuery Sorter: %+v", q.Query.Sorts)
 	}
 
-	return q.Go(context.Background(), 1, e.queryLimiter)
-}
-
-func (e *Exporter) StartQuerier(wg *sync.WaitGroup, size int) chan *transformer.BlockFuture {
-	taskPool := make(chan *transformer.BlockFuture, size)
-
-	for i := 0; i < size; i++ {
-		wg.Add(1)
-
-		go func() {
-			for task := range taskPool {
-				blocks, err := e.QueryBlocks(task.BlockID) // TODO add retry?
-				task.Write(blocks, err)
-			}
-			wg.Done()
-		}()
-	}
-
-	return taskPool
-}
-
-func (e *Exporter) QueryBlocks(blockID string) ([]notion.Block, error) {
-	e.queryLimiter.Wait(context.Background())
-
-	blocks := []notion.Block{}
-	cursor := ""
-	for {
-		query := &notion.PaginationQuery{StartCursor: cursor}
-		resp, err := e.findBlockChildrenByIDWithRetry(context.TODO(), blockID, query)
-		if err != nil {
-			return blocks, err
-		}
-
-		blocks = append(blocks, resp.Results...)
-
-		if resp.HasMore {
-			cursor = *resp.NextCursor
-		} else {
-			break
-		}
-	}
-
-	if e.DebugCache {
-		e.writeDebugCache(blockID, blocks)
-	}
-	return blocks, nil
+	return q.ForEach(ctx, e.DebugLimit, e.queryLimiter, visit)
 }
 
 func (e *Exporter) writeDebugCache(id string, v interface{}) {
@@ -296,9 +232,18 @@ func (e *Exporter) exportPage(page notion.Page) error {
 		e.writeDebugCache("page-"+page.ID, page)
 	}
 
-	blocks, err := e.QueryBlocks(page.ID)
+	snapshot, err := e.reader().BlockSnapshot(context.TODO(), page.ID, notionread.BestEffort)
 	if err != nil {
 		return fmt.Errorf("query block id: %v, err: %v", page.ID, err)
+	}
+	blocks := snapshot.Roots()
+	if e.DebugCache {
+		for _, blockID := range snapshot.LoadedBlockIDs() {
+			loaded, childErr := snapshot.Children(blockID)
+			if childErr == nil {
+				e.writeDebugCache(blockID, loaded)
+			}
+		}
 	}
 
 	filename := e.getExportFilename(page)
@@ -312,7 +257,7 @@ func (e *Exporter) exportPage(page notion.Page) error {
 		log.Printf("Exported to file: [%v] -> %v", page.ID, filename)
 	}
 
-	t := transformer.New(e.Markdown, &page, blocks, e.queryPool, e.downloadPool)
+	t := transformer.New(e.Markdown, &page, snapshot, e.downloadPool)
 	t.TransformOut(file)
 	e.trackExportedFile(filename)
 
@@ -320,14 +265,14 @@ func (e *Exporter) exportPage(page notion.Page) error {
 	for _, block := range blocks {
 		switch b := block.(type) {
 		case *notion.ChildPageBlock:
-			if child, err := e.findPageByIDWithRetry(context.Background(), b.ID()); err == nil {
+			if child, err := e.reader().Page(context.Background(), b.ID()); err == nil {
 				if err := e.exportPage(child); err != nil {
 					log.Printf("Failed to export sub-page: %v", err)
 				}
 			}
 		case *notion.LinkToPageBlock:
 			if b.PageID != "" {
-				if child, err := e.findPageByIDWithRetry(context.Background(), b.PageID); err == nil {
+				if child, err := e.reader().Page(context.Background(), b.PageID); err == nil {
 					if err := e.exportPage(child); err != nil {
 						log.Printf("Failed to export sub-page: %v", err)
 					}
@@ -526,22 +471,16 @@ func (e *Exporter) getAssetFilename(asset *transformer.AssetFuture) string {
 	return filepath.Join(e.AssetDirectory, transformer.SimpleID(asset.BlockID)+asset.Extension)
 }
 
-func (e *Exporter) findPageByIDWithRetry(ctx context.Context, pageID string) (notion.Page, error) {
-	var page notion.Page
-	err := retryNotion(func() error {
-		var innerErr error
-		page, innerErr = e.Client.FindPageByID(ctx, pageID)
-		return innerErr
-	})
-	return page, err
+func (e *Exporter) reader() *notionread.Reader {
+	if e.notionReader != nil {
+		return e.notionReader
+	}
+	return e.newReader()
 }
 
-func (e *Exporter) findBlockChildrenByIDWithRetry(ctx context.Context, blockID string, query *notion.PaginationQuery) (notion.BlockChildrenResponse, error) {
-	var resp notion.BlockChildrenResponse
-	err := retryNotion(func() error {
-		var innerErr error
-		resp, innerErr = e.Client.FindBlockChildrenByID(ctx, blockID, query)
-		return innerErr
-	})
-	return resp, err
+func (e *Exporter) newReader() *notionread.Reader {
+	return notionread.New(e.Client,
+		notionread.WithLimiter(e.queryLimiter),
+		notionread.WithConcurrency(max(1, int(e.ExportSpeed))),
+	)
 }

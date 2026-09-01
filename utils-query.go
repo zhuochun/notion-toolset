@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/dstotijn/go-notion"
+	"github.com/zhuochun/notion-toolset/notionread"
 	"golang.org/x/time/rate"
 )
 
@@ -47,58 +48,14 @@ func (q *DatabaseQuery) SetQuery(queryTmpl string, builder QueryBuilder) error {
 	return nil
 }
 
-func (q *DatabaseQuery) Go(ctx context.Context, size int, rateLimiter ...*rate.Limiter) (chan []notion.Page, chan error) {
-	pagesChan := make(chan []notion.Page, size)
-	errChan := make(chan error, 1)
-
-	go func() {
-		cursor := ""
-
-		for {
-			if len(rateLimiter) == 1 {
-				rateLimiter[0].Wait(context.Background())
-			}
-
-			q.Query.StartCursor = cursor
-			var resp notion.DatabaseQueryResponse
-			err := retryNotion(func() error {
-				var innerErr error
-				resp, innerErr = q.Client.QueryDatabase(ctx, q.DatabaseID, q.Query)
-				return innerErr
-			})
-			if err != nil {
-				errChan <- err
-				break
-			}
-
-			pagesChan <- resp.Results
-
-			if q.Query.PageSize > 0 { // hack detection to exit
-				break
-			}
-
-			if resp.HasMore {
-				cursor = *resp.NextCursor
-			} else {
-				break
-			}
-		}
-
-		close(pagesChan)
-	}()
-
-	return pagesChan, errChan
+func (q *DatabaseQuery) ForEach(ctx context.Context, maxResults int, limiter *rate.Limiter, visit func(notion.Page) error) error {
+	return notionread.New(q.Client, notionread.WithLimiter(limiter)).ForEachDatabasePage(ctx, notionread.DatabaseRead{
+		DatabaseID: q.DatabaseID,
+		Query:      q.Query,
+		MaxResults: maxResults,
+	}, visit)
 }
 
 func (q *DatabaseQuery) Once(ctx context.Context) ([]notion.Page, error) {
-	var resp notion.DatabaseQueryResponse
-	err := retryNotion(func() error {
-		var innerErr error
-		resp, innerErr = q.Client.QueryDatabase(ctx, q.DatabaseID, q.Query)
-		return innerErr
-	})
-	if err != nil {
-		return []notion.Page{}, err
-	}
-	return resp.Results, nil
+	return notionread.New(q.Client).QueryDatabaseOnce(ctx, q.DatabaseID, q.Query)
 }

@@ -7,6 +7,7 @@ import (
 	"log"
 
 	"github.com/dstotijn/go-notion"
+	"github.com/zhuochun/notion-toolset/notionread"
 )
 
 type CollectorConfig struct {
@@ -41,28 +42,21 @@ func (c *Collector) Run() error {
 	}
 	log.Printf("Found collected pages: %d", len(collected))
 
-	pagesChan, errChan := c.ScanPages()
 	pageNum := 0
 	newPages := []string{}
-	for pages := range pagesChan {
-		for _, page := range pages {
-			pageNum += 1
-
-			if !collected[page.ID] {
-				newPages = append(newPages, page.ID)
-			}
-
-			if c.DebugMode && pageNum%500 == 0 {
-				log.Printf("Scanned pages: %v so far", pageNum)
-			}
+	err = c.ScanPages(context.TODO(), func(page notion.Page) error {
+		pageNum++
+		if !collected[page.ID] {
+			newPages = append(newPages, page.ID)
 		}
-	}
+		if c.DebugMode && pageNum%500 == 0 {
+			log.Printf("Scanned pages: %v so far", pageNum)
+		}
+		return nil
+	})
 	log.Printf("Scanned pages: %v, new pages: %v", pageNum, len(newPages))
-
-	select {
-	case err := <-errChan:
+	if err != nil {
 		return err
-	default:
 	}
 
 	succeeded, failed := c.WriteBlocks(newPages)
@@ -73,88 +67,37 @@ func (c *Collector) Run() error {
 
 func (c *Collector) GetCollected() (map[string]bool, error) {
 	collected := map[string]bool{}
-	visited := map[string]struct{}{}
+	snapshot, err := notionread.New(c.Client).BlockForest(context.TODO(), c.CollectionIDs, notionread.Strict)
+	if err != nil {
+		return nil, fmt.Errorf("get collection blocks: %w", err)
+	}
 
-	scanIDs := c.CollectionIDs
-	nextScanIDs := []string{}
-	for {
-		if c.DebugMode {
-			log.Printf("GetCollected ScanIDs: %v", scanIDs)
+	for _, blockID := range snapshot.LoadedBlockIDs() {
+		blocks, err := snapshot.Children(blockID)
+		if err != nil {
+			return nil, fmt.Errorf("get collection blocks %s: %w", blockID, err)
 		}
 
-		for _, blockID := range scanIDs {
-			if _, ok := visited[blockID]; ok {
-				continue
+		for _, block := range blocks {
+			var richText []notion.RichText
+			switch b := block.(type) {
+			case *notion.ParagraphBlock:
+				richText = b.RichText
+			case *notion.ToggleBlock:
+				richText = b.RichText
 			}
-			visited[blockID] = struct{}{}
-
-			blocks, err := c.GetCollectionBlocks(blockID)
-			if err != nil {
-				return nil, fmt.Errorf("get collection blocks %s: %w", blockID, err)
-			}
-
-			for _, block := range blocks {
-				if block.HasChildren() {
-					nextScanIDs = append(nextScanIDs, block.ID())
-				}
-
-				switch b := block.(type) {
-				case *notion.ParagraphBlock:
-					for _, cBlock := range b.RichText {
-						if cBlock.Mention != nil && cBlock.Mention.Type == notion.MentionTypePage {
-							collected[cBlock.Mention.Page.ID] = true
-						}
-					}
-				case *notion.ToggleBlock:
-					for _, cBlock := range b.RichText {
-						if cBlock.Mention != nil && cBlock.Mention.Type == notion.MentionTypePage {
-							collected[cBlock.Mention.Page.ID] = true
-						}
-					}
+			for _, content := range richText {
+				if content.Mention != nil && content.Mention.Type == notion.MentionTypePage {
+					collected[content.Mention.Page.ID] = true
 				}
 			}
 		}
-
-		if len(nextScanIDs) == 0 {
-			break
-		}
-
-		scanIDs = nextScanIDs
-		nextScanIDs = []string{}
 	}
 
 	return collected, nil
 }
 
-func (c *Collector) GetCollectionBlocks(blockID string) ([]notion.Block, error) {
-	pages := []notion.Block{}
-
-	cursor := ""
-	for {
-		query := &notion.PaginationQuery{StartCursor: cursor}
-		var resp notion.BlockChildrenResponse
-		err := retryNotion(func() error {
-			var innerErr error
-			resp, innerErr = c.Client.FindBlockChildrenByID(context.TODO(), blockID, query)
-			return innerErr
-		})
-		if err != nil {
-			return pages, err
-		}
-
-		pages = append(pages, resp.Results...)
-
-		if resp.HasMore {
-			cursor = *resp.NextCursor
-		} else {
-			break
-		}
-	}
-
-	return pages, nil
-}
-
-func (c *Collector) ScanPages() (chan []notion.Page, chan error) {
+func (c *Collector) ScanPages(ctx context.Context, visit func(notion.Page) error) error {
 	q := NewDatabaseQuery(c.Client, c.DatabaseID)
 
 	if err := q.SetQuery(c.DatabaseQuery, QueryBuilder{}); err != nil {
@@ -166,7 +109,7 @@ func (c *Collector) ScanPages() (chan []notion.Page, chan error) {
 		log.Printf("DatabaseQuery Sorter: %+v", q.Query.Sorts)
 	}
 
-	return q.Go(context.TODO(), 3)
+	return q.ForEach(ctx, 0, nil, visit)
 }
 
 func (c *Collector) WriteBlocks(pageIDs []string) (succeeded, failed int) {

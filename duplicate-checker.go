@@ -45,49 +45,40 @@ func (d *DuplicateChecker) Validate() error {
 }
 
 func (d *DuplicateChecker) Run() error {
-	pagesChan, errChan := d.ScanPages()
 	pageNum := 0
 	set := map[string]string{}
 	reported := map[string]struct{}{}
-	for pages := range pagesChan {
-		for _, page := range pages {
-			pageNum += 1
-
-			keys := d.pageKeys(page)
-			if len(keys) != 0 {
-				for _, key := range keys {
-					if id, ok := set[key]; ok {
-						if err := d.reportDuplicatePage(reported, id); err != nil {
-							return err
-						}
-						if err := d.reportDuplicatePage(reported, page.ID); err != nil {
-							return err
-						}
-					} else {
-						set[key] = page.ID
+	err := d.ScanPages(context.TODO(), func(page notion.Page) error {
+		pageNum++
+		keys := d.pageKeys(page)
+		if len(keys) != 0 {
+			for _, key := range keys {
+				if id, ok := set[key]; ok {
+					if err := d.reportDuplicatePage(reported, id); err != nil {
+						return err
 					}
+					if err := d.reportDuplicatePage(reported, page.ID); err != nil {
+						return err
+					}
+				} else {
+					set[key] = page.ID
 				}
-			}
-
-			if d.brokenURLCheck(page) {
-				if err := d.reportDuplicatePage(reported, page.ID); err != nil {
-					return err
-				}
-			}
-
-			if d.DebugMode && pageNum%500 == 0 {
-				log.Printf("Scanned pages: %v so far", pageNum)
 			}
 		}
-	}
-	log.Printf("Scanned pages: %v, unique keys: %v", pageNum, len(set))
 
-	select {
-	case err := <-errChan:
-		return err
-	default:
+		if d.brokenURLCheck(page) {
+			if err := d.reportDuplicatePage(reported, page.ID); err != nil {
+				return err
+			}
+		}
+
+		if d.DebugMode && pageNum%500 == 0 {
+			log.Printf("Scanned pages: %v so far", pageNum)
+		}
 		return nil
-	}
+	})
+	log.Printf("Scanned pages: %v, unique keys: %v", pageNum, len(set))
+	return err
 }
 
 func (d *DuplicateChecker) reportDuplicatePage(reported map[string]struct{}, pageID string) error {
@@ -101,7 +92,7 @@ func (d *DuplicateChecker) reportDuplicatePage(reported map[string]struct{}, pag
 	return nil
 }
 
-func (d *DuplicateChecker) ScanPages() (chan []notion.Page, chan error) {
+func (d *DuplicateChecker) ScanPages(ctx context.Context, visit func(notion.Page) error) error {
 	q := NewDatabaseQuery(d.Client, d.DatabaseID)
 
 	if err := q.SetQuery(d.DatabaseQuery, QueryBuilder{}); err != nil {
@@ -113,7 +104,7 @@ func (d *DuplicateChecker) ScanPages() (chan []notion.Page, chan error) {
 		log.Printf("DatabaseQuery Sorter: %+v", q.Query.Sorts)
 	}
 
-	return q.Go(context.TODO(), 3)
+	return q.ForEach(ctx, 0, nil, visit)
 }
 
 func (d *DuplicateChecker) WriteBlock(pageID string) (notion.BlockChildrenResponse, error) {

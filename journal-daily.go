@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/dstotijn/go-notion"
+	"github.com/zhuochun/notion-toolset/notionread"
 	"github.com/zhuochun/notion-toolset/transformer"
 )
 
@@ -79,13 +80,13 @@ func (d *DailyJournal) GetPages(tCursor time.Time) (map[string]bool, error) {
 		log.Printf("DatabaseQuery Sorter: %+v", query.Sorts)
 	}
 
-	resp, err := d.Client.QueryDatabase(context.TODO(), d.DatabaseID, query)
+	results, err := notionread.New(d.Client).QueryDatabaseOnce(context.TODO(), d.DatabaseID, query)
 	if err != nil {
 		return nil, err
 	}
 
 	pages := map[string]bool{}
-	for _, page := range resp.Results {
+	for _, page := range results {
 		title, err := transformer.GetPageTitle(page)
 		if err != nil {
 			return nil, fmt.Errorf("invalid DatabaseQuery response: %w", err)

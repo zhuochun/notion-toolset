@@ -1,15 +1,17 @@
 package main
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/dstotijn/go-notion"
 )
 
-func TestScanDirectPagesBuffersMultipleErrorsWithoutDeadlock(t *testing.T) {
+func TestScanDirectPagesReturnsMultipleErrorsWithoutDeadlock(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 	}))
@@ -18,27 +20,16 @@ func TestScanDirectPagesBuffersMultipleErrorsWithoutDeadlock(t *testing.T) {
 	client := newNotionTestClient(t, server.URL)
 	m := &LangModel{Client: client}
 
-	pagesChan, errChan := m.scanDirectPages([]string{"bad-1", "bad-2"})
-
 	pageCount := 0
-	for pages := range pagesChan {
-		pageCount += len(pages)
-	}
+	err := m.scanDirectPages(context.Background(), []string{"bad-1", "bad-2"}, func(notion.Page) error {
+		pageCount++
+		return nil
+	})
 	if pageCount != 0 {
 		t.Fatalf("expected no pages, got %d", pageCount)
 	}
-
-	errCount := 0
-	for errCount < 2 {
-		select {
-		case err := <-errChan:
-			if err == nil {
-				t.Fatalf("expected concrete error")
-			}
-			errCount++
-		default:
-			t.Fatalf("expected 2 buffered errors, got %d", errCount)
-		}
+	if err == nil || !strings.Contains(err.Error(), "bad1") || !strings.Contains(err.Error(), "bad2") {
+		t.Fatalf("expected both page errors, got %v", err)
 	}
 }
 

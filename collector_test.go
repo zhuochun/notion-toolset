@@ -97,6 +97,46 @@ func TestCollectorGetCollectedVisitsEachBlockOnce(t *testing.T) {
 	}
 }
 
+func TestCollectorGetCollectedUsesSyncedSourceChildren(t *testing.T) {
+	var copyRequests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/blocks/root/children":
+			_, _ = w.Write([]byte(`{"object":"list","results":[{
+				"object":"block","id":"copy","created_time":"2021-05-14T09:15:00.000Z","last_edited_time":"2021-05-14T09:15:00.000Z","has_children":true,"archived":false,
+				"type":"synced_block","synced_block":{"synced_from":{"type":"block_id","block_id":"source"}}
+			}],"next_cursor":null,"has_more":false}`))
+		case "/v1/blocks/source/children":
+			_, _ = w.Write([]byte(`{"object":"list","results":[{
+				"object":"block","id":"mention","created_time":"2021-05-14T09:15:00.000Z","last_edited_time":"2021-05-14T09:15:00.000Z","has_children":false,"archived":false,
+				"type":"paragraph","paragraph":{"rich_text":[{"type":"mention","plain_text":"Target","href":null,"annotations":{"bold":false,"italic":false,"strikethrough":false,"underline":false,"code":false,"color":"default"},"mention":{"type":"page","page":{"id":"target-page"}}}]}
+			}],"next_cursor":null,"has_more":false}`))
+		case "/v1/blocks/copy/children":
+			copyRequests.Add(1)
+			http.NotFound(w, r)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	collector := &Collector{
+		Client:          newNotionTestClient(t, server.URL),
+		CollectorConfig: CollectorConfig{CollectionIDs: []string{"root"}},
+	}
+	collected, err := collector.GetCollected()
+	if err != nil {
+		t.Fatalf("get collected: %v", err)
+	}
+	if !collected["target-page"] {
+		t.Fatalf("expected synced source mention, got %v", collected)
+	}
+	if copyRequests.Load() != 0 {
+		t.Fatalf("expected source ID, got %d copy requests", copyRequests.Load())
+	}
+}
+
 func TestCollectorWriteBlocksBatchesAndContinuesAfterFailure(t *testing.T) {
 	var requestNum atomic.Int32
 	var mu sync.Mutex

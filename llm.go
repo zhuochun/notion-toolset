@@ -14,6 +14,7 @@ import (
 
 	"github.com/dstotijn/go-notion"
 	"github.com/sashabaranov/go-openai"
+	"github.com/zhuochun/notion-toolset/notionread"
 	"github.com/zhuochun/notion-toolset/transformer"
 	"golang.org/x/time/rate"
 )
@@ -55,8 +56,8 @@ type LangModel struct {
 	LangModelConfig
 
 	queryLimiter *rate.Limiter
+	notionReader *notionread.Reader
 	taskPool     chan notion.Page
-	queryPool    chan *transformer.BlockFuture
 }
 
 func (m *LangModel) Validate() error {
@@ -95,68 +96,51 @@ func (m *LangModel) Run() error {
 	}
 
 	m.queryLimiter = rate.NewLimiter(rate.Limit(m.TaskSpeed), int(m.TaskSpeed))
+	m.notionReader = m.newReader()
 
 	// workers to process LLM prompt per page
 	taskWg := new(sync.WaitGroup)
 	m.taskPool = m.StartLLMTasker(taskWg, int(m.TaskSpeed))
-	// workers to query content of notion blocks
-	queryWg := new(sync.WaitGroup)
-	m.queryPool = m.StartQuerier(queryWg, int(m.TaskSpeed))
-
 	// query database pages, queue each pages for export
-	pagesChan, errChan := m.ScanPages()
 	pageNum := 0
-	for pages := range pagesChan {
-		for _, page := range pages {
-			pageNum += 1
-			m.taskPool <- page
-
-			if m.DebugMode && pageNum%500 == 0 {
-				log.Printf("Scanned pages: %v so far", pageNum)
-			}
+	scanErr := m.ScanPages(context.Background(), func(page notion.Page) error {
+		pageNum++
+		m.taskPool <- page
+		if m.DebugMode && pageNum%500 == 0 {
+			log.Printf("Scanned pages: %v so far", pageNum)
 		}
-	}
+		return nil
+	})
 	log.Printf("Scanned pages: %v", pageNum)
 
 	close(m.taskPool) // TODO do not support sub-page now, same as export cmd
 	taskWg.Wait()
 
-	close(m.queryPool)
-	queryWg.Wait()
-
-	select {
-	case err := <-errChan:
-		return err
-	default:
-		return nil
-	}
+	return scanErr
 }
 
-func (m *LangModel) ScanPages() (chan []notion.Page, chan error) {
+func (m *LangModel) ScanPages(ctx context.Context, visit func(notion.Page) error) error {
 	if m.ExecOne != "" { // exec one page ID
-		return m.scanDirectPages([]string{m.ExecOne})
+		return m.scanDirectPages(ctx, []string{m.ExecOne}, visit)
 	}
 
 	if m.ChainFile != "" { // exec IDs found in a file
 		content, err := os.ReadFile(m.ChainFile)
 		if err != nil {
 			log.Printf("Open file errored, file: %v, err: %v", m.ChainFile, err)
-			return m.scanDirectPages([]string{})
+			return nil
 		}
 
 		normalizedContent := strings.Replace(string(content), "\r\n", "\n", -1)
 		pageIDs := strings.Split(normalizedContent, "\n")
 
-		return m.scanDirectPages(pageIDs)
+		return m.scanDirectPages(ctx, pageIDs, visit)
 	}
 
-	return m.scanDatabasePages()
+	return m.scanDatabasePages(ctx, visit)
 }
 
-func (m *LangModel) scanDirectPages(pageIDs []string) (chan []notion.Page, chan error) {
-	pagesChan := make(chan []notion.Page, len(pageIDs))
-	errChan := make(chan error, len(pageIDs))
-
+func (m *LangModel) scanDirectPages(ctx context.Context, pageIDs []string, visit func(notion.Page) error) error {
 	var errs []error
 	for _, pageID := range pageIDs {
 		if pageID == "" {
@@ -164,22 +148,19 @@ func (m *LangModel) scanDirectPages(pageIDs []string) (chan []notion.Page, chan 
 		}
 		pageID = transformer.SimpleID(pageID)
 
-		if page, err := m.Client.FindPageByID(context.Background(), pageID); err == nil {
-			pagesChan <- []notion.Page{page}
+		if page, err := m.reader().Page(ctx, pageID); err == nil {
+			if err := visit(page); err != nil {
+				return err
+			}
 		} else {
 			errs = append(errs, fmt.Errorf("find page by id %v: %w", pageID, err))
 		}
 	}
 
-	for _, err := range errs {
-		errChan <- err
-	}
-	close(pagesChan)
-	close(errChan)
-	return pagesChan, errChan
+	return errors.Join(errs...)
 }
 
-func (m *LangModel) scanDatabasePages() (chan []notion.Page, chan error) {
+func (m *LangModel) scanDatabasePages(ctx context.Context, visit func(notion.Page) error) error {
 	q := NewDatabaseQuery(m.Client, m.DatabaseID)
 
 	today := time.Now().Format(layoutDate)
@@ -197,49 +178,7 @@ func (m *LangModel) scanDatabasePages() (chan []notion.Page, chan error) {
 		log.Printf("DatabaseQuery Sorter: %+v", q.Query.Sorts)
 	}
 
-	return q.Go(context.Background(), 1, m.queryLimiter)
-}
-
-func (m *LangModel) StartQuerier(wg *sync.WaitGroup, size int) chan *transformer.BlockFuture {
-	taskPool := make(chan *transformer.BlockFuture, size)
-
-	for i := 0; i < size; i++ {
-		wg.Add(1)
-
-		go func() {
-			for task := range taskPool {
-				blocks, err := m.QueryBlocks(task.BlockID) // TODO add retry?
-				task.Write(blocks, err)
-			}
-			wg.Done()
-		}()
-	}
-
-	return taskPool
-}
-
-func (m *LangModel) QueryBlocks(blockID string) ([]notion.Block, error) {
-	m.queryLimiter.Wait(context.Background())
-
-	blocks := []notion.Block{}
-	cursor := ""
-	for {
-		query := &notion.PaginationQuery{StartCursor: cursor}
-		resp, err := m.Client.FindBlockChildrenByID(context.TODO(), blockID, query)
-		if err != nil {
-			return blocks, err
-		}
-
-		blocks = append(blocks, resp.Results...)
-
-		if resp.HasMore {
-			cursor = *resp.NextCursor
-		} else {
-			break
-		}
-	}
-
-	return blocks, nil
+	return q.ForEach(ctx, 0, m.queryLimiter, visit)
 }
 
 func (m *LangModel) StartLLMTasker(wg *sync.WaitGroup, size int) chan notion.Page {
@@ -264,29 +203,21 @@ func (m *LangModel) StartLLMTasker(wg *sync.WaitGroup, size int) chan notion.Pag
 
 func (m *LangModel) runLLMGroup() error {
 	m.queryLimiter = rate.NewLimiter(rate.Limit(m.TaskSpeed), int(m.TaskSpeed))
+	m.notionReader = m.newReader()
 
-	// workers to query content of notion blocks
-	queryWg := new(sync.WaitGroup)
-	m.queryPool = m.StartQuerier(queryWg, int(m.TaskSpeed))
-
-	pagesChan, errChan := m.ScanPages()
 	pages := []notion.Page{}
-	for ps := range pagesChan {
-		pages = append(pages, ps...)
-	}
+	err := m.ScanPages(context.Background(), func(page notion.Page) error {
+		pages = append(pages, page)
+		return nil
+	})
 	log.Printf("Scanned pages: %v", len(pages))
-
-	select {
-	case err := <-errChan:
-		if err != nil {
-			return err
-		}
-	default:
+	if err != nil {
+		return err
 	}
 
 	var contents []string
 	for _, page := range pages {
-		blocks, err := m.QueryBlocks(page.ID)
+		snapshot, err := m.reader().BlockSnapshot(context.TODO(), page.ID, notionread.BestEffort)
 		if err != nil {
 			return fmt.Errorf("query block id: %v, err: %v", page.ID, err)
 		}
@@ -299,7 +230,7 @@ func (m *LangModel) runLLMGroup() error {
 			PlainText:      true,
 		}
 
-		t := transformer.New(markdown, &page, blocks, m.queryPool, nil)
+		t := transformer.New(markdown, &page, snapshot, nil)
 		content := t.Transform()
 
 		if len(content) < m.PageMinChars {
@@ -312,9 +243,6 @@ func (m *LangModel) runLLMGroup() error {
 
 		contents = append(contents, content)
 	}
-
-	close(m.queryPool)
-	queryWg.Wait()
 
 	if len(contents) == 0 {
 		return nil
@@ -329,7 +257,7 @@ func (m *LangModel) runLLMGroup() error {
 		target = p
 	}
 	if target.ID == "" && m.ExecOne != "" {
-		p, err := m.Client.FindPageByID(context.Background(), transformer.SimpleID(m.ExecOne))
+		p, err := m.reader().Page(context.Background(), transformer.SimpleID(m.ExecOne))
 		if err == nil {
 			target = p
 		}
@@ -342,8 +270,22 @@ func (m *LangModel) runLLMGroup() error {
 	return m.runLLMContent(target, content)
 }
 
+func (m *LangModel) reader() *notionread.Reader {
+	if m.notionReader != nil {
+		return m.notionReader
+	}
+	return m.newReader()
+}
+
+func (m *LangModel) newReader() *notionread.Reader {
+	return notionread.New(m.Client,
+		notionread.WithLimiter(m.queryLimiter),
+		notionread.WithConcurrency(max(1, int(m.TaskSpeed))),
+	)
+}
+
 func (m *LangModel) runLLMPage(page notion.Page) error {
-	blocks, err := m.QueryBlocks(page.ID)
+	snapshot, err := m.reader().BlockSnapshot(context.TODO(), page.ID, notionread.BestEffort)
 	if err != nil {
 		return fmt.Errorf("query block id: %v, err: %v", page.ID, err)
 	}
@@ -356,7 +298,7 @@ func (m *LangModel) runLLMPage(page notion.Page) error {
 		PlainText:      true,
 	}
 
-	t := transformer.New(markdown, &page, blocks, m.queryPool, nil)
+	t := transformer.New(markdown, &page, snapshot, nil)
 	content := t.Transform()
 
 	if len(content) < m.PageMinChars {

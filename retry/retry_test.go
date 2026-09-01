@@ -1,11 +1,38 @@
 package retry
 
 import (
+	"context"
 	"errors"
 	"reflect"
 	"testing"
 	"time"
 )
+
+func TestDoIfContextStopsDuringBackoff(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	sentinel := errors.New("temporary failure")
+	attempts := 0
+
+	err := doIfContext(
+		ctx,
+		func() error {
+			attempts++
+			return sentinel
+		},
+		func(error) bool { return true },
+		func(context.Context, time.Duration) error {
+			cancel()
+			return ctx.Err()
+		},
+	)
+
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected cancellation, got %v", err)
+	}
+	if attempts != 1 {
+		t.Fatalf("expected one attempt, got %d", attempts)
+	}
+}
 
 func TestDoIfRetriesWithExponentialBackoff(t *testing.T) {
 	sentinel := errors.New("temporary failure")

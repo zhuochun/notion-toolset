@@ -5,14 +5,16 @@ import (
 	"testing"
 
 	"github.com/dstotijn/go-notion"
+	"github.com/zhuochun/notion-toolset/notionread"
 )
 
 func TestMarkdownChildDatabaseUsesPlaceholderText(t *testing.T) {
-	m := New(MarkdownConfig{}, nil, []notion.Block{
+	blocks := []notion.Block{
 		&notion.ChildDatabaseBlock{
 			Title: "Projects",
 		},
-	}, nil, nil)
+	}
+	m := New(MarkdownConfig{}, nil, notionread.NewSnapshot("root", blocks, nil), nil)
 
 	output := m.Transform()
 
@@ -26,11 +28,12 @@ func TestMarkdownChildDatabaseUsesPlaceholderText(t *testing.T) {
 }
 
 func TestMarkdownChildDatabasePlainTextModeUsesPlainText(t *testing.T) {
-	m := New(MarkdownConfig{PlainText: true}, nil, []notion.Block{
+	blocks := []notion.Block{
 		&notion.ChildDatabaseBlock{
 			Title: "Projects",
 		},
-	}, nil, nil)
+	}
+	m := New(MarkdownConfig{PlainText: true}, nil, notionread.NewSnapshot("root", blocks, nil), nil)
 
 	output := m.Transform()
 

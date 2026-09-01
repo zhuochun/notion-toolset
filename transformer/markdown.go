@@ -2,19 +2,18 @@ package transformer
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"sync"
 
 	"github.com/dstotijn/go-notion"
+	"github.com/zhuochun/notion-toolset/notionread"
 )
 
 type Markdown struct {
 	page       *notion.Page
 	pageBlocks []notion.Block
-	children   map[string]*BlockFuture
+	snapshot   notionread.BlockSnapshot
 
-	queryChan chan *BlockFuture // needed to load subchildren
 	assetChan chan *AssetFuture // needed to export assets
 
 	config MarkdownConfig
@@ -99,27 +98,4 @@ func (m *Markdown) TransformOut(b io.StringWriter) {
 
 	// write page blocks
 	m.transformBlocks(env, m.pageBlocks)
-}
-
-// Not atomic
-func (m *Markdown) loadChildren(blockID string) {
-	// check whether it is already loaded before
-	if _, ok := m.children[blockID]; ok {
-		return
-	}
-
-	block := NewBlockFuture(blockID)
-	m.children[blockID] = block
-	m.queryChan <- block
-}
-
-// Read the children
-func (m *Markdown) getChildren(blockID string) ([]notion.Block, error) {
-	f, ok := m.children[blockID]
-	if !ok {
-		return []notion.Block{}, fmt.Errorf("failed to create blockID: %v", blockID)
-	}
-
-	childBlocks, err := f.Read()
-	return childBlocks, err
 }
