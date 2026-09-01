@@ -33,7 +33,10 @@ func (c *Collector) Validate() error {
 }
 
 func (c *Collector) Run() error {
-	collected := c.GetCollected()
+	collected, err := c.GetCollected()
+	if err != nil {
+		return fmt.Errorf("get collected pages: %w", err)
+	}
 	log.Printf("Found collected pages: %d", len(collected))
 
 	pagesChan, errChan := c.ScanPages()
@@ -73,7 +76,7 @@ func (c *Collector) Run() error {
 	return nil
 }
 
-func (c *Collector) GetCollected() map[string]bool {
+func (c *Collector) GetCollected() (map[string]bool, error) {
 	collected := map[string]bool{}
 
 	scanIDs := c.CollectionIDs
@@ -86,7 +89,7 @@ func (c *Collector) GetCollected() map[string]bool {
 		for _, blockID := range scanIDs {
 			blocks, err := c.GetCollectionBlocks(blockID)
 			if err != nil {
-				log.Printf("GetCollectionBlocks Failed. ID: %v, Err: %v", blockID, err)
+				return nil, fmt.Errorf("get collection blocks %s: %w", blockID, err)
 			}
 
 			for _, block := range blocks {
@@ -119,7 +122,7 @@ func (c *Collector) GetCollected() map[string]bool {
 		nextScanIDs = []string{}
 	}
 
-	return collected
+	return collected, nil
 }
 
 func (c *Collector) GetCollectionBlocks(blockID string) ([]notion.Block, error) {
@@ -128,7 +131,12 @@ func (c *Collector) GetCollectionBlocks(blockID string) ([]notion.Block, error) 
 	cursor := ""
 	for {
 		query := &notion.PaginationQuery{StartCursor: cursor}
-		resp, err := c.Client.FindBlockChildrenByID(context.TODO(), blockID, query)
+		var resp notion.BlockChildrenResponse
+		err := retryNotion(func() error {
+			var innerErr error
+			resp, innerErr = c.Client.FindBlockChildrenByID(context.TODO(), blockID, query)
+			return innerErr
+		})
 		if err != nil {
 			return pages, err
 		}

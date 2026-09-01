@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"github.com/dstotijn/go-notion"
-	"github.com/zhuochun/notion-toolset/retry"
 	"golang.org/x/time/rate"
 )
 
@@ -62,7 +61,7 @@ func (q *DatabaseQuery) Go(ctx context.Context, size int, rateLimiter ...*rate.L
 
 			q.Query.StartCursor = cursor
 			var resp notion.DatabaseQueryResponse
-			err := retry.Do(func() error {
+			err := retryNotion(func() error {
 				var innerErr error
 				resp, innerErr = q.Client.QueryDatabase(ctx, q.DatabaseID, q.Query)
 				return innerErr
@@ -93,7 +92,7 @@ func (q *DatabaseQuery) Go(ctx context.Context, size int, rateLimiter ...*rate.L
 
 func (q *DatabaseQuery) Once(ctx context.Context) ([]notion.Page, error) {
 	var resp notion.DatabaseQueryResponse
-	err := retry.Do(func() error {
+	err := retryNotion(func() error {
 		var innerErr error
 		resp, innerErr = q.Client.QueryDatabase(ctx, q.DatabaseID, q.Query)
 		return innerErr

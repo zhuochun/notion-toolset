@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"github.com/dstotijn/go-notion"
-	"github.com/zhuochun/notion-toolset/retry"
 	"github.com/zhuochun/notion-toolset/transformer"
 	"golang.org/x/time/rate"
 )
@@ -529,7 +528,7 @@ func (e *Exporter) getAssetFilename(asset *transformer.AssetFuture) string {
 
 func (e *Exporter) findPageByIDWithRetry(ctx context.Context, pageID string) (notion.Page, error) {
 	var page notion.Page
-	err := retry.Do(func() error {
+	err := retryNotion(func() error {
 		var innerErr error
 		page, innerErr = e.Client.FindPageByID(ctx, pageID)
 		return innerErr
@@ -539,7 +538,7 @@ func (e *Exporter) findPageByIDWithRetry(ctx context.Context, pageID string) (no
 
 func (e *Exporter) findBlockChildrenByIDWithRetry(ctx context.Context, blockID string, query *notion.PaginationQuery) (notion.BlockChildrenResponse, error) {
 	var resp notion.BlockChildrenResponse
-	err := retry.Do(func() error {
+	err := retryNotion(func() error {
 		var innerErr error
 		resp, innerErr = e.Client.FindBlockChildrenByID(ctx, blockID, query)
 		return innerErr
