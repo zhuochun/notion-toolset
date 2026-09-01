@@ -16,7 +16,6 @@ import (
 	"github.com/sashabaranov/go-openai"
 	"github.com/zhuochun/notion-toolset/notionread"
 	"github.com/zhuochun/notion-toolset/transformer"
-	"golang.org/x/time/rate"
 )
 
 type LangModelConfig struct {
@@ -55,7 +54,6 @@ type LangModel struct {
 
 	LangModelConfig
 
-	queryLimiter *rate.Limiter
 	notionReader *notionread.Reader
 	taskPool     chan notion.Page
 }
@@ -95,8 +93,7 @@ func (m *LangModel) Run() error {
 		return m.runLLMGroup()
 	}
 
-	m.queryLimiter = rate.NewLimiter(rate.Limit(m.TaskSpeed), int(m.TaskSpeed))
-	m.notionReader = m.newReader()
+	m.notionReader = newNotionReader(m.Client, m.TaskSpeed)
 
 	// workers to process LLM prompt per page
 	taskWg := new(sync.WaitGroup)
@@ -178,7 +175,7 @@ func (m *LangModel) scanDatabasePages(ctx context.Context, visit func(notion.Pag
 		log.Printf("DatabaseQuery Sorter: %+v", q.Query.Sorts)
 	}
 
-	return q.ForEach(ctx, 0, m.queryLimiter, visit)
+	return q.ForEach(ctx, 0, m.reader(), visit)
 }
 
 func (m *LangModel) StartLLMTasker(wg *sync.WaitGroup, size int) chan notion.Page {
@@ -202,8 +199,7 @@ func (m *LangModel) StartLLMTasker(wg *sync.WaitGroup, size int) chan notion.Pag
 }
 
 func (m *LangModel) runLLMGroup() error {
-	m.queryLimiter = rate.NewLimiter(rate.Limit(m.TaskSpeed), int(m.TaskSpeed))
-	m.notionReader = m.newReader()
+	m.notionReader = newNotionReader(m.Client, m.TaskSpeed)
 
 	pages := []notion.Page{}
 	err := m.ScanPages(context.Background(), func(page notion.Page) error {
@@ -274,14 +270,7 @@ func (m *LangModel) reader() *notionread.Reader {
 	if m.notionReader != nil {
 		return m.notionReader
 	}
-	return m.newReader()
-}
-
-func (m *LangModel) newReader() *notionread.Reader {
-	return notionread.New(m.Client,
-		notionread.WithLimiter(m.queryLimiter),
-		notionread.WithConcurrency(max(1, int(m.TaskSpeed))),
-	)
+	return notionread.New(m.Client, notionread.WithConcurrency(max(1, int(m.TaskSpeed))))
 }
 
 func (m *LangModel) runLLMPage(page notion.Page) error {

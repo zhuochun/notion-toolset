@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/dstotijn/go-notion"
-	"github.com/zhuochun/notion-toolset/notionread"
 	"github.com/zhuochun/notion-toolset/transformer"
 )
 
@@ -72,24 +71,19 @@ func (d *WeeklyJournal) NextMonday(tCursor time.Time) time.Time {
 }
 
 func (d *WeeklyJournal) GetPages(tCursor time.Time) (map[string]bool, error) {
-	queryData, err := Tmpl("DatabaseQuery", d.PageQuery, QueryBuilder{
+	q := NewDatabaseQuery(d.Client, d.DatabaseID)
+	if err := q.SetQuery(d.PageQuery, QueryBuilder{
 		Date: tCursor.Format(layoutDate),
-	})
-	if err != nil {
+	}); err != nil {
 		return nil, err
 	}
 
-	query := &notion.DatabaseQuery{}
-	if err := json.Unmarshal(queryData, query); err != nil {
-		return nil, fmt.Errorf("unmarshal DatabaseQuery: %w", err)
-	}
-
 	if d.DebugMode {
-		log.Printf("DatabaseQuery Filter: %+v", query.Filter)
-		log.Printf("DatabaseQuery Sorter: %+v", query.Sorts)
+		log.Printf("DatabaseQuery Filter: %+v", q.Query.Filter)
+		log.Printf("DatabaseQuery Sorter: %+v", q.Query.Sorts)
 	}
 
-	results, err := notionread.New(d.Client).QueryDatabaseOnce(context.TODO(), d.DatabaseID, query)
+	results, err := q.Once(context.TODO())
 	if err != nil {
 		return nil, err
 	}

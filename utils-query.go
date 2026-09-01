@@ -31,6 +31,13 @@ func NewDatabaseQuery(c *notion.Client, databaseID string) *DatabaseQuery {
 	}
 }
 
+func newNotionReader(client *notion.Client, requestsPerSecond float64) *notionread.Reader {
+	return notionread.New(client,
+		notionread.WithLimiter(rate.NewLimiter(rate.Limit(requestsPerSecond), int(requestsPerSecond))),
+		notionread.WithConcurrency(max(1, int(requestsPerSecond))),
+	)
+}
+
 func (q *DatabaseQuery) SetQuery(queryTmpl string, builder QueryBuilder) error {
 	if queryTmpl == "" {
 		return nil
@@ -48,8 +55,11 @@ func (q *DatabaseQuery) SetQuery(queryTmpl string, builder QueryBuilder) error {
 	return nil
 }
 
-func (q *DatabaseQuery) ForEach(ctx context.Context, maxResults int, limiter *rate.Limiter, visit func(notion.Page) error) error {
-	return notionread.New(q.Client, notionread.WithLimiter(limiter)).ForEachDatabasePage(ctx, notionread.DatabaseRead{
+func (q *DatabaseQuery) ForEach(ctx context.Context, maxResults int, reader *notionread.Reader, visit func(notion.Page) error) error {
+	if reader == nil {
+		reader = notionread.New(q.Client)
+	}
+	return reader.ForEachDatabasePage(ctx, notionread.DatabaseRead{
 		DatabaseID: q.DatabaseID,
 		Query:      q.Query,
 		MaxResults: maxResults,

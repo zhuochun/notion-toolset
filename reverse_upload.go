@@ -22,7 +22,6 @@ import (
 	"github.com/dstotijn/go-notion"
 	"github.com/zhuochun/notion-toolset/notionread"
 	"github.com/zhuochun/notion-toolset/transformer"
-	"golang.org/x/time/rate"
 )
 
 const (
@@ -178,9 +177,8 @@ func (r *ReverseUploader) startExporter() {
 		DebugMode:      r.DebugMode,
 		Client:         r.Client,
 		ExporterConfig: r.ExporterConfig,
-		queryLimiter:   rate.NewLimiter(rate.Limit(r.ExportSpeed), int(r.ExportSpeed)),
 	}
-	r.exporter.notionReader = r.exporter.newReader()
+	r.exporter.notionReader = newNotionReader(r.Client, r.ExportSpeed)
 
 	r.downloadWg = new(sync.WaitGroup)
 	r.exporter.downloadPool = r.exporter.StartDownloader(r.downloadWg, int(r.ExportSpeed)*2)

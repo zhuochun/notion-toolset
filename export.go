@@ -19,7 +19,6 @@ import (
 	"github.com/dstotijn/go-notion"
 	"github.com/zhuochun/notion-toolset/notionread"
 	"github.com/zhuochun/notion-toolset/transformer"
-	"golang.org/x/time/rate"
 )
 
 var exportAssetHTTPClient = &http.Client{
@@ -52,7 +51,6 @@ type Exporter struct {
 	Client *notion.Client
 	ExporterConfig
 
-	queryLimiter *rate.Limiter
 	notionReader *notionread.Reader
 
 	exportPool   chan notion.Page
@@ -117,8 +115,7 @@ func (e *Exporter) precheckDir(dir string) error {
 }
 
 func (e *Exporter) Run() error {
-	e.queryLimiter = rate.NewLimiter(rate.Limit(e.ExportSpeed), int(e.ExportSpeed))
-	e.notionReader = e.newReader()
+	e.notionReader = newNotionReader(e.Client, e.ExportSpeed)
 	e.exportedFiles = map[string]struct{}{}
 
 	// workers to write markdowns
@@ -186,7 +183,7 @@ func (e *Exporter) scanDatabasePages(ctx context.Context, visit func(notion.Page
 		log.Printf("DatabaseQuery Sorter: %+v", q.Query.Sorts)
 	}
 
-	return q.ForEach(ctx, e.DebugLimit, e.queryLimiter, visit)
+	return q.ForEach(ctx, e.DebugLimit, e.reader(), visit)
 }
 
 func (e *Exporter) writeDebugCache(id string, v interface{}) {
@@ -475,12 +472,5 @@ func (e *Exporter) reader() *notionread.Reader {
 	if e.notionReader != nil {
 		return e.notionReader
 	}
-	return e.newReader()
-}
-
-func (e *Exporter) newReader() *notionread.Reader {
-	return notionread.New(e.Client,
-		notionread.WithLimiter(e.queryLimiter),
-		notionread.WithConcurrency(max(1, int(e.ExportSpeed))),
-	)
+	return notionread.New(e.Client, notionread.WithConcurrency(max(1, int(e.ExportSpeed))))
 }
