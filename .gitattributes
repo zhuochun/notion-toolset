@@ -1,2 +1,5 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Golden Markdown preserves the renderer's final paragraph separator.
+transformer/testdata/nested.md whitespace=-blank-at-eof
