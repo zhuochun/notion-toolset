@@ -1,0 +1,283 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>notion-toolset upload resolve</title>
+  <style>
+    body { margin: 0; font-family: Arial, sans-serif; background: #f7f7f8; color: #222; }
+    .layout { display: flex; height: 100vh; }
+    .left { width: 420px; min-width: 420px; max-width: 420px; flex: 0 0 420px; border-right: 1px solid #ddd; background: #fff; display: flex; flex-direction: column; }
+    .right { flex: 1; display: flex; flex-direction: column; }
+    .header { padding: 10px 12px; border-bottom: 1px solid #eee; font-size: 13px; background: #fafafa; }
+    .list { overflow: auto; padding: 0; margin: 0; list-style: none; }
+    .item { border-bottom: 1px solid #f1f1f1; padding: 8px 10px; cursor: pointer; }
+    .item.active { background: #eef6ff; }
+    .item .pathRow { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .item .path { font-size: 13px; word-break: break-all; }
+    .item .status { flex: 0 0 auto; font-size: 11px; color: #6b7280; min-width: 62px; text-align: right; }
+    .item .status.loading { color: #0b63d1; }
+    .item .status.loaded { color: #18794e; font-weight: 600; }
+    .item .meta { margin-top: 4px; color: #666; font-size: 12px; }
+    .actions { position: relative; padding: 10px 12px; border-bottom: 1px solid #ddd; background: #fff; display: flex; gap: 8px; align-items: center; }
+    .actions a, .actions button { font-size: 12px; padding: 6px 10px; border-radius: 4px; border: 1px solid #bbb; background: #fff; color: #111; text-decoration: none; cursor: pointer; }
+    .actions #openLink { border-color: #1f7a3f; background: #1f7a3f; color: #fff; }
+    .actions #openLink:hover { background: #176033; }
+    .actions button:disabled, .actions a.disabled { opacity: .45; pointer-events: none; }
+    .confirm-pop { position: absolute; display: none; min-width: 230px; background: #fff; border: 1px solid #d1d5db; border-radius: 6px; box-shadow: 0 10px 24px rgba(0,0,0,0.16); padding: 8px; z-index: 5; }
+    .confirm-pop.show { display: block; }
+    .confirm-pop .title { font-size: 12px; margin-bottom: 8px; color: #222; }
+    .confirm-pop .row { display: flex; justify-content: flex-end; gap: 6px; }
+    .confirm-pop .row button { font-size: 12px; padding: 5px 9px; border-radius: 4px; border: 1px solid #bbb; background: #fff; cursor: pointer; }
+    .confirm-pop .row .danger { border-color: #b42318; background: #b42318; color: #fff; }
+    .confirm-pop .row .danger:hover { background: #921b13; }
+    .diff { margin: 0; padding: 12px; overflow: auto; background: #0f111a; color: #e6e6e6; font-family: Consolas, monospace; font-size: 12px; line-height: 1.4; white-space: pre; flex: 1; }
+    .diff .hint { color: #8b91a1; }
+    .diff .line { display: block; white-space: pre; }
+    .diff .line.meta { color: #9aa3b2; }
+    .diff .line.hunk { color: #6cb6ff; }
+    .diff .line.add { color: #b4f0c6; background: rgba(34, 197, 94, 0.15); }
+    .diff .line.del { color: #fecaca; background: rgba(239, 68, 68, 0.16); }
+    .badge { display: inline-block; border: 1px solid #ddd; border-radius: 4px; padding: 0 6px; margin-right: 6px; font-size: 11px; color: #444; }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <div class="left">
+      <div class="header">Files (uncommitted under exporter.directory)</div>
+      <ul id="fileList" class="list"></ul>
+    </div>
+    <div class="right">
+      <div class="actions">
+        <span id="state"></span>
+        <a id="openLink" href="#" target="_blank" rel="noreferrer noopener" class="disabled">Open Notion</a>
+        <button id="discardBtn" type="button">Discard Local</button>
+        <div id="discardConfirm" class="confirm-pop">
+          <div class="title">Discard local changes for this file?</div>
+          <div class="row">
+            <button id="discardCancelBtn" type="button">Cancel</button>
+            <button id="discardConfirmBtn" type="button" class="danger">Discard</button>
+          </div>
+        </div>
+      </div>
+      <div id="diff" class="diff"><span class="hint">Select a file</span></div>
+    </div>
+  </div>
+  <script>
+    const workspace = {{ printf "%q" .Workspace }};
+    let files = [];
+    let selected = -1;
+    let loadingId = -1;
+    let diffReqId = 0;
+
+    const fileList = document.getElementById("fileList");
+    const diffBox = document.getElementById("diff");
+    const stateBox = document.getElementById("state");
+    const openLink = document.getElementById("openLink");
+    const discardBtn = document.getElementById("discardBtn");
+    const discardConfirm = document.getElementById("discardConfirm");
+    const discardCancelBtn = document.getElementById("discardCancelBtn");
+    const discardConfirmBtn = document.getElementById("discardConfirmBtn");
+
+    function selectedFile() {
+      return files.find(f => f.id === selected);
+    }
+
+    function rowMeta(file) {
+      const tags = [];
+      if (!file.compared) {
+        tags.push("not-compared");
+      } else {
+        tags.push(file.match ? "match" : "mismatch");
+        if (file.merge) tags.push("diff=" + file.merge);
+      }
+      if (file.skipped) tags.push("skipped");
+      if (file.discarded) tags.push("discarded");
+      return tags.join(" | ");
+    }
+
+    function rowStatus(file) {
+      if (file.id === loadingId) return { text: "loading...", cls: "loading" };
+      if (file.compared) return { text: "✓ loaded", cls: "loaded" };
+      return { text: "", cls: "" };
+    }
+
+    function hideDiscardConfirm() {
+      discardConfirm.classList.remove("show");
+    }
+
+    function showDiscardConfirm() {
+      const btnRect = discardBtn.getBoundingClientRect();
+      const containerRect = discardBtn.parentElement.getBoundingClientRect();
+      const left = btnRect.left - containerRect.left;
+      const top = btnRect.bottom - containerRect.top + 6;
+      discardConfirm.style.left = left + "px";
+      discardConfirm.style.top = top + "px";
+      discardConfirm.classList.add("show");
+    }
+
+    function escapeHtml(value) {
+      return value
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;");
+    }
+
+    function renderDiffText(text) {
+      if (!text) {
+        diffBox.innerHTML = "";
+        return;
+      }
+      const html = text.split("\n").map(line => {
+        let cls = "line";
+        if (line.startsWith("@@")) cls += " hunk";
+        else if (line.startsWith("diff ") || line.startsWith("index ") || line.startsWith("--- ") || line.startsWith("+++ ")) cls += " meta";
+        else if (line.startsWith("+") && !line.startsWith("+++")) cls += " add";
+        else if (line.startsWith("-") && !line.startsWith("---")) cls += " del";
+        return '<span class="' + cls + '">' + escapeHtml(line) + '</span>';
+      }).join("");
+      diffBox.innerHTML = html;
+    }
+
+    function renderList() {
+      fileList.innerHTML = "";
+      for (const file of files) {
+        const li = document.createElement("li");
+        li.className = "item" + (file.id === selected ? " active" : "");
+        li.onclick = () => {
+          selected = file.id;
+          renderList();
+          renderActions();
+          loadDiff();
+        };
+
+        const pathRow = document.createElement("div");
+        pathRow.className = "pathRow";
+
+        const p = document.createElement("div");
+        p.className = "path";
+        p.textContent = file.relPath;
+        pathRow.appendChild(p);
+
+        const status = document.createElement("div");
+        const statusView = rowStatus(file);
+        status.className = "status" + (statusView.cls ? " " + statusView.cls : "");
+        status.textContent = statusView.text;
+        pathRow.appendChild(status);
+
+        li.appendChild(pathRow);
+
+        const m = document.createElement("div");
+        m.className = "meta";
+        m.textContent = rowMeta(file) + (file.message ? " | " + file.message : "");
+        li.appendChild(m);
+        fileList.appendChild(li);
+      }
+      if (files.length === 0) {
+        const li = document.createElement("li");
+        li.className = "item";
+        li.textContent = "No files";
+        fileList.appendChild(li);
+      }
+    }
+
+    function renderActions() {
+      const file = selectedFile();
+      if (!file) {
+        stateBox.textContent = "";
+        openLink.href = "#";
+        openLink.classList.add("disabled");
+        discardBtn.disabled = true;
+        hideDiscardConfirm();
+        return;
+      }
+      stateBox.innerHTML = '<span class="badge">' + rowMeta(file) + '</span>';
+      if (file.notionURL) {
+        openLink.href = file.notionURL;
+        openLink.classList.remove("disabled");
+      } else {
+        openLink.href = "#";
+        openLink.classList.add("disabled");
+      }
+      discardBtn.disabled = file.discarded;
+      if (discardBtn.disabled) {
+        hideDiscardConfirm();
+      }
+    }
+
+    async function loadFiles() {
+      const res = await fetch("/api/files");
+      const data = await res.json();
+      files = data.files || [];
+      if (!files.find(f => f.id === selected)) {
+        selected = -1;
+        loadingId = -1;
+      }
+      renderList();
+      renderActions();
+      if (selected < 0) {
+        diffBox.innerHTML = '<span class="hint">Select a file</span>';
+      }
+    }
+
+    async function loadDiff() {
+      const file = selectedFile();
+      if (!file) {
+        diffBox.innerHTML = '<span class="hint">Select a file</span>';
+        return;
+      }
+      const reqID = ++diffReqId;
+      loadingId = file.id;
+      renderList();
+      renderActions();
+      diffBox.innerHTML = "";
+
+      const res = await fetch("/api/diff?id=" + encodeURIComponent(file.id));
+      if (reqID !== diffReqId) return;
+
+      let text = "";
+      if (!res.ok) {
+        text = await res.text();
+      } else {
+        text = await res.text();
+      }
+      loadingId = -1;
+      await loadFiles();
+      if (selected !== file.id) return;
+      renderDiffText(text);
+    }
+
+    discardBtn.onclick = async () => {
+      const file = selectedFile();
+      if (!file || discardBtn.disabled) return;
+      if (discardConfirm.classList.contains("show")) {
+        hideDiscardConfirm();
+      } else {
+        showDiscardConfirm();
+      }
+    };
+
+    discardCancelBtn.onclick = () => {
+      hideDiscardConfirm();
+    };
+
+    discardConfirmBtn.onclick = async () => {
+      const file = selectedFile();
+      if (!file || discardBtn.disabled) return;
+      hideDiscardConfirm();
+      const res = await fetch("/api/discard?id=" + encodeURIComponent(file.id), { method: "POST" });
+      if (!res.ok) {
+        alert(await res.text());
+      }
+      await loadFiles();
+    };
+
+    document.addEventListener("click", (event) => {
+      if (!discardConfirm.classList.contains("show")) return;
+      if (discardConfirm.contains(event.target) || discardBtn.contains(event.target)) return;
+      hideDiscardConfirm();
+    });
+
+    loadFiles();
+  </script>
+</body>
+</html>

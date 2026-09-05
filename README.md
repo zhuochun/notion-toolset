@@ -4,6 +4,10 @@ Automate recurring Notion workflows with a small command-line tool.
 
 `notion-toolset` connects to the Notion API, reads a YAML config, and runs one focused workflow at a time. Most users should start with a released binary and either run it locally or from GitLab CI.
 
+Reference: [commands and effects](docs/commands.md),
+[configuration and defaults](docs/configuration.md),
+[contributor checks](DEVELOPMENT.md), and [code ownership](docs/architecture.md).
+
 ## Features
 
 - Daily journal creation
