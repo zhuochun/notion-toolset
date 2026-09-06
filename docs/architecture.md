@@ -57,6 +57,15 @@ reader. Normal upload closes on return; resolve retains it for the existing
 process/server lifetime. Bulk export uses the same private rendering helper
 without serializing its page-worker pool or buffering entire pages.
 
+Both render sessions and bulk export use the private `assetDownloader` in
+`assets.go`, which holds only download dependencies. Sessions do not construct
+an Exporter workflow to obtain download workers. Export and LLM page queues are
+local to Run; their worker start methods are private.
+
+LLM page and group execution share `pageContent` for snapshot rendering and
+byte-length eligibility. Their callers retain separate error policies: per-page
+workers log and continue, while group execution returns the error.
+
 Workflows use config/notionops/notionread/transformer; none imports app or CLI.
 Upload additionally uses exporter; exporter never imports upload. Public packages
 never import workflows. Config references the existing MarkdownConfig instead of

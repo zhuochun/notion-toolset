@@ -31,7 +31,6 @@ type LangModel struct {
 	config.LangModelConfig
 
 	notionReader *notionread.Reader
-	taskPool     chan notion.Page
 }
 
 func (m *LangModel) Validate() error {
@@ -66,12 +65,12 @@ func (m *LangModel) Run() error {
 	m.notionReader = notionops.NewReader(m.Client, m.TaskSpeed)
 
 	taskWg := new(sync.WaitGroup)
-	m.taskPool = m.StartLLMTasker(taskWg, int(m.TaskSpeed))
+	taskPool := m.startLLMTasker(taskWg, int(m.TaskSpeed))
 
 	pageNum := 0
 	scanErr := m.ScanPages(context.Background(), func(page notion.Page) error {
 		pageNum++
-		m.taskPool <- page
+		taskPool <- page
 		if m.DebugMode && pageNum%500 == 0 {
 			m.logger().Printf("Scanned pages: %v so far", pageNum)
 		}
@@ -79,7 +78,7 @@ func (m *LangModel) Run() error {
 	})
 	m.logger().Printf("Scanned pages: %v", pageNum)
 
-	close(m.taskPool)
+	close(taskPool)
 	taskWg.Wait()
 
 	return scanErr
@@ -147,7 +146,7 @@ func (m *LangModel) scanDatabasePages(ctx context.Context, visit func(notion.Pag
 	return q.ForEach(ctx, 0, m.reader(), visit)
 }
 
-func (m *LangModel) StartLLMTasker(wg *sync.WaitGroup, size int) chan notion.Page {
+func (m *LangModel) startLLMTasker(wg *sync.WaitGroup, size int) chan notion.Page {
 	taskPool := make(chan notion.Page, size)
 
 	for i := 0; i < size; i++ {
@@ -182,31 +181,13 @@ func (m *LangModel) runLLMGroup() error {
 
 	var contents []string
 	for _, page := range pages {
-		snapshot, err := m.reader().BlockSnapshot(context.TODO(), page.ID, notionread.BestEffort)
+		content, eligible, err := m.pageContent(page)
 		if err != nil {
-			return fmt.Errorf("query block id: %v, err: %v", page.ID, err)
+			return err
 		}
-
-		markdown := transformer.MarkdownConfig{
-			NoAlias:        true,
-			NoFrontMatters: true,
-			NoMetadata:     true,
-			TitleToH1:      true,
-			PlainText:      true,
+		if eligible {
+			contents = append(contents, content)
 		}
-
-		t := transformer.New(markdown, &page, snapshot, nil)
-		content := t.Transform()
-
-		if len(content) < m.PageMinChars {
-			m.logger().Printf("Skip content by MinChars=%v, id: %v, len: %v", m.PageMinChars, page.ID, len(content))
-			continue
-		} else if m.PageMaxChars > 0 && len(content) > m.PageMaxChars {
-			m.logger().Printf("Skip content by MaxChars=%v, id: %v, len: %v", m.PageMaxChars, page.ID, len(content))
-			continue
-		}
-
-		contents = append(contents, content)
 	}
 
 	if len(contents) == 0 {
@@ -243,9 +224,19 @@ func (m *LangModel) reader() *notionread.Reader {
 }
 
 func (m *LangModel) runLLMPage(page notion.Page) error {
+	content, eligible, err := m.pageContent(page)
+	if err != nil || !eligible {
+		return err
+	}
+	return m.runLLMContent(page, content)
+}
+
+// pageContent keeps rendering and byte-length eligibility identical in both modes.
+// Eligibility is explicit so an empty result is not confused with a skipped page.
+func (m *LangModel) pageContent(page notion.Page) (string, bool, error) {
 	snapshot, err := m.reader().BlockSnapshot(context.TODO(), page.ID, notionread.BestEffort)
 	if err != nil {
-		return fmt.Errorf("query block id: %v, err: %v", page.ID, err)
+		return "", false, fmt.Errorf("query block id: %v, err: %v", page.ID, err)
 	}
 
 	markdown := transformer.MarkdownConfig{
@@ -261,13 +252,13 @@ func (m *LangModel) runLLMPage(page notion.Page) error {
 
 	if len(content) < m.PageMinChars {
 		m.logger().Printf("Skip content by MinChars=%v, id: %v, len: %v", m.PageMinChars, page.ID, len(content))
-		return nil
+		return "", false, nil
 	} else if m.PageMaxChars > 0 && len(content) > m.PageMaxChars {
 		m.logger().Printf("Skip content by MaxChars=%v, id: %v, len: %v", m.PageMaxChars, page.ID, len(content))
-		return nil
+		return "", false, nil
 	}
 
-	return m.runLLMContent(page, content)
+	return content, true, nil
 }
 
 func (m *LangModel) runLLMContent(page notion.Page, content string) error {

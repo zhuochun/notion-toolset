@@ -29,7 +29,6 @@ type Exporter struct {
 
 	notionReader *notionread.Reader
 
-	exportPool   chan notion.Page
 	downloadPool chan *transformer.AssetFuture
 
 	exportedFilesMu sync.Mutex
@@ -80,15 +79,16 @@ func (e *Exporter) Run() error {
 	e.exportedFiles = map[string]struct{}{}
 
 	exportWg := new(sync.WaitGroup)
-	e.exportPool = e.StartExporter(exportWg, int(e.ExportSpeed))
+	exportPool := e.startExporter(exportWg, int(e.ExportSpeed))
 
 	downloadWg := new(sync.WaitGroup)
-	e.downloadPool = e.StartDownloader(downloadWg, int(e.ExportSpeed)*2)
+	downloads := assetDownloader{directory: e.AssetDirectory, client: e.AssetClient, logger: e.logger()}
+	e.downloadPool = downloads.start(downloadWg, int(e.ExportSpeed)*2)
 
 	pageNum := 0
 	scanErr := e.ScanPages(context.Background(), func(page notion.Page) error {
 		pageNum++
-		e.exportPool <- page
+		exportPool <- page
 		if e.DebugMode && pageNum%500 == 0 {
 			e.logger().Printf("Scanned pages: %v so far", pageNum)
 		}
@@ -96,7 +96,7 @@ func (e *Exporter) Run() error {
 	})
 	e.logger().Printf("Scanned pages: %v", pageNum)
 
-	close(e.exportPool)
+	close(exportPool)
 	exportWg.Wait()
 
 	close(e.downloadPool)
@@ -163,7 +163,7 @@ func (e *Exporter) writeDebugCache(id string, v interface{}) {
 	file.Close()
 }
 
-func (e *Exporter) StartExporter(wg *sync.WaitGroup, size int) chan notion.Page {
+func (e *Exporter) startExporter(wg *sync.WaitGroup, size int) chan notion.Page {
 	taskPool := make(chan notion.Page, size)
 
 	for i := 0; i < size; i++ {

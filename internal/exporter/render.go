@@ -35,8 +35,8 @@ func NewRenderSession(reader *notionread.Reader, cfg config.ExporterConfig, clie
 		return nil, errors.New("render session requires normalized exportSpeed (1 to 3)")
 	}
 	s := &RenderSession{reader: reader, markdown: cfg.Markdown}
-	downloads := &Exporter{ExporterConfig: cfg, AssetClient: client, Logger: logger}
-	s.assets = downloads.StartDownloader(&s.workers, int(cfg.ExportSpeed)*2)
+	downloads := assetDownloader{directory: cfg.AssetDirectory, client: client, logger: logger}
+	s.assets = downloads.start(&s.workers, int(cfg.ExportSpeed)*2)
 	return s, nil
 }
 

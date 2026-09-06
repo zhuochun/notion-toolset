@@ -90,7 +90,7 @@ func TestLLMRequestAndWriteOutcomes(t *testing.T) {
 }
 
 func TestLLMChainGroupFilteringAndFailures(t *testing.T) {
-	for _, mode := range []string{"per-page", "group", "min", "max", "group-missing-journal", "per-page-completion-error", "group-completion-error"} {
+	for _, mode := range []string{"per-page", "group", "min", "max", "group-min", "group-max", "group-missing-journal", "per-page-completion-error", "group-completion-error", "per-page-read-error", "group-read-error"} {
 		t.Run(mode, func(t *testing.T) {
 			completions, writes := 0, 0
 			var logs bytes.Buffer
@@ -121,6 +121,11 @@ func TestLLMChainGroupFilteringAndFailures(t *testing.T) {
 				case strings.Contains(r.URL.Path, "/pages/"):
 					fmt.Fprintf(w, `{"object":"page","id":%q,"parent":{"type":"database_id","database_id":"db"},"properties":{"Name":{"id":"title","type":"title","title":[]}}}`, filepath.Base(r.URL.Path))
 				default:
+					if strings.HasSuffix(mode, "read-error") {
+						w.WriteHeader(400)
+						io.WriteString(w, `{"object":"error","status":400,"code":"validation_error","message":"read failed"}`)
+						return
+					}
 					io.WriteString(w, `{"object":"list","results":[{"object":"block","id":"p","type":"paragraph","paragraph":{"rich_text":[{"type":"text","annotations":{},"plain_text":"source","text":{"content":"source"}}]}}],"has_more":false}`)
 				}
 			}))
@@ -132,10 +137,10 @@ func TestLLMChainGroupFilteringAndFailures(t *testing.T) {
 			oc := openai.DefaultConfig("test")
 			oc.BaseURL = s.URL
 			m := LangModel{Client: notiontest.Client(t, s.URL), OpenaiClient: openai.NewClientWithConfig(oc), Logger: log.New(&logs, "", 0), Now: func() time.Time { return time.Date(2026, 9, 5, 0, 0, 0, 0, time.UTC) }, LangModelConfig: config.LangModelConfig{Prompt: "prompt", TaskSpeed: 3, ChainFile: chain, GroupExec: strings.HasPrefix(mode, "group")}}
-			if mode == "min" {
+			if mode == "min" || mode == "group-min" {
 				m.PageMinChars = 100
 			}
-			if mode == "max" {
+			if mode == "max" || mode == "group-max" {
 				m.PageMaxChars = 1
 			}
 			if mode == "group-missing-journal" {
@@ -145,7 +150,7 @@ func TestLLMChainGroupFilteringAndFailures(t *testing.T) {
 				t.Fatal(err)
 			}
 			err := m.Run()
-			wantErr := mode == "group-missing-journal" || mode == "group-completion-error"
+			wantErr := mode == "group-missing-journal" || mode == "group-completion-error" || mode == "group-read-error"
 			if (err != nil) != wantErr {
 				t.Fatalf("Run=%v logs=%s", err, &logs)
 			}
@@ -153,7 +158,7 @@ func TestLLMChainGroupFilteringAndFailures(t *testing.T) {
 			if m.GroupExec {
 				want = 1
 			}
-			if mode == "min" || mode == "max" || mode == "group-missing-journal" {
+			if mode == "min" || mode == "max" || mode == "group-min" || mode == "group-max" || mode == "group-missing-journal" || strings.HasSuffix(mode, "read-error") {
 				want = 0
 			}
 			if completions != want {
@@ -166,7 +171,7 @@ func TestLLMChainGroupFilteringAndFailures(t *testing.T) {
 			if writes != wantWrites {
 				t.Fatalf("writes=%d want=%d", writes, wantWrites)
 			}
-			if mode == "per-page-completion-error" && !strings.Contains(logs.String(), "Failed to run LLM") {
+			if (mode == "per-page-completion-error" || mode == "per-page-read-error") && !strings.Contains(logs.String(), "Failed to run LLM") {
 				t.Fatal("worker failure not logged")
 			}
 		})

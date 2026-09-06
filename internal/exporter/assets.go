@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -18,7 +19,18 @@ var exportAssetHTTPClient = &http.Client{
 	Timeout: 30 * time.Second,
 }
 
-func (e *Exporter) StartDownloader(wg *sync.WaitGroup, size int) chan *transformer.AssetFuture {
+// assetDownloader needs no database, traversal, or export-cleanup state.
+type assetDownloader struct {
+	directory string
+	client    *http.Client
+	logger    *log.Logger
+}
+
+func (d assetDownloader) start(wg *sync.WaitGroup, size int) chan *transformer.AssetFuture {
+	logger := d.logger
+	if logger == nil {
+		logger = log.Default()
+	}
 	taskPool := make(chan *transformer.AssetFuture, size)
 
 	for i := 0; i < size; i++ {
@@ -26,11 +38,11 @@ func (e *Exporter) StartDownloader(wg *sync.WaitGroup, size int) chan *transform
 
 		go func() {
 			for asset := range taskPool {
-				filename, err := e.downloadAsset(asset)
+				filename, err := d.download(asset)
 				asset.Write(filename, err)
 
 				if err != nil {
-					e.logger().Printf("Failed to download: %v", err)
+					logger.Printf("Failed to download: %v", err)
 				}
 			}
 
@@ -43,8 +55,8 @@ func (e *Exporter) StartDownloader(wg *sync.WaitGroup, size int) chan *transform
 
 var assetExtension = regexp.MustCompile(`(?i)\.(png|jpe?g|gif|webp|mp4|mov|webm|mkv|avi|mp3|wav|m4a|flac|ogg|pdf)$`)
 
-func (e *Exporter) downloadAsset(asset *transformer.AssetFuture) (string, error) {
-	if e.AssetDirectory == "" {
+func (d assetDownloader) download(asset *transformer.AssetFuture) (string, error) {
+	if d.directory == "" {
 		return "", fmt.Errorf("config assetDirectory is empty")
 	}
 
@@ -52,7 +64,7 @@ func (e *Exporter) downloadAsset(asset *transformer.AssetFuture) (string, error)
 		return "", fmt.Errorf("unsupported extension: %v", asset.Extension)
 	}
 
-	filename := e.getAssetFilename(asset)
+	filename := filepath.Join(d.directory, transformer.SimpleID(asset.BlockID)+asset.Extension)
 
 	if _, err := os.Stat(filename); err == nil {
 		return filename, nil
@@ -69,7 +81,7 @@ func (e *Exporter) downloadAsset(asset *transformer.AssetFuture) (string, error)
 		return "", err
 	}
 
-	client := e.AssetClient
+	client := d.client
 	if client == nil {
 		client = exportAssetHTTPClient
 	}
@@ -88,8 +100,4 @@ func (e *Exporter) downloadAsset(asset *transformer.AssetFuture) (string, error)
 	}
 
 	return filename, nil
-}
-
-func (e *Exporter) getAssetFilename(asset *transformer.AssetFuture) string {
-	return filepath.Join(e.AssetDirectory, transformer.SimpleID(asset.BlockID)+asset.Extension)
 }
