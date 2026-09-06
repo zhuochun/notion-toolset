@@ -70,7 +70,7 @@ requests are separate from the Notion client.
 | `upload` / `exporter` | Discover changed files in a Git worktree; compare local/base/Notion, then perform selected mode | Per-file failures continue and produce a final error. Replacement is not atomic; see below |
 | `llm` / `llm` | Read direct page, chain IDs, or database; render plain text; filter by configured byte-length bounds; invoke LLM and append results | Per-page worker failures are logged; Run returns the scan error. Group mode propagates completion/write errors. A missing chain file is logged and treated as no input |
 
-Journal queries use one API result page, as before. A limit counts future dates
+Journal queries use one API result page. A limit counts future dates
 considered, not successful creations; skipped existing entries do not extend it.
 Flashback requires an oldest timestamp sufficiently in the past to make the
 random hour bound positive; invalid bounds retain the existing panic behavior.
@@ -89,7 +89,7 @@ when the entire Markdown config is zero. Database export needs `directory`.
 Directories are created if absent. Paths are relative to the process working
 directory, including asset and alias paths; config file location does not rebase them.
 
-By default filenames use the compact page ID. Title filenames use the existing
+By default filenames use the compact page ID. Title filenames use the
 Windows-safe slug/collision policy and optional two-string replacement. Markdown
 properties/aliases follow the configuration reference. Notion-hosted assets use
 block-ID filenames; external images remain external links. Asset failures retain
@@ -122,7 +122,7 @@ perform export cleanup. BOM/CRLF/CR differences are ignored for comparison.
 Resolve serves `/`, `/api/files`, `/api/diff?id=N`, and
 `/api/discard?id=N` (POST). Its comparison state is kept in memory for that run;
 restart to rediscover changed files. The HTML is included in the binary and needs
-no runtime file beside it. There is no new background service or shutdown protocol.
+no runtime file beside it. Stop the server by interrupting the process.
 
 Replacement strips export frontmatter and, when `titleToH1` is true, removes the
 leading H1 and updates the Notion database title. The supported converter includes

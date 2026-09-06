@@ -18,9 +18,8 @@ required. Public CLI commands must continue to work. The owner delegated the
 render-session lifecycle decision and asked for a simple, fail-fast design with
 no speculative concurrency machinery; P6 records that decision.
 
-The remaining design prerequisites are resolved by this specification. This
-document update does not itself execute the refactor or authorize remote writes
-or release publication. The initial agent setup remains existing groundwork.
+This specification resolves the design prerequisites. Editing it does not
+execute the refactor or authorize remote writes or release publication.
 
 This is the canonical specification for the restructure. Current implementation
 ownership remains in [architecture.md](../architecture.md), current commands in
@@ -214,7 +213,7 @@ requirement can reopen `cmd/` placement with explicit command compatibility work
 
 ## 5. System design principles
 
-### P1. Packages own decisions, not arbitrary processing phases
+### P1. Keep workflow decisions together
 
 Each workflow owns its selection rules, defaults, validation policy, ordering,
 effects, and interpretation of partial results. `app` composes workflows and owns
@@ -225,7 +224,7 @@ multiple workflows. It does not decide which pages to collect or delete.
 Daily and weekly journals share one scheduling responsibility and belong together.
 Upload's Git, parser, and HTTP concerns initially become files within one package;
 they do not each need another package/interface. Split further only when actual
-consumers or reasoning boundaries justify it.
+consumers or responsibilities justify it.
 
 ### P2. Dependency direction is explicit and acyclic
 
@@ -292,7 +291,7 @@ construction at the existing lifecycle point. In particular, non-LLM commands
 must not start requiring LLM credentials, and restructuring must not change
 which error appears first when both credentials and configuration are invalid.
 
-### P5. Hide meaningful complexity behind small interfaces
+### P5. Add interfaces where consumers need them
 
 Prefer concrete implementations and standard-library collaborators. Introduce
 interfaces at their consuming boundary only when the collaborator varies
@@ -300,7 +299,7 @@ independently or a genuine external contract needs isolation. Do not create a
 parallel interface for every concrete type or mirror the complete Notion SDK.
 This follows Go's guidance on consumer-owned interfaces. [Go code review guidance](https://go.dev/wiki/CodeReviewComments#interfaces)
 
-Useful seams include workflow time/random sources, an HTTP client/transport,
+Examples include workflow time/random sources, an HTTP client/transport,
 LLM completion, and the renderer consumed by upload. Use a real temporary Git
 repository to exercise Git semantics before considering a repository-wide Git
 abstraction. Keep a small command contract in `app` only for the dispatch and
@@ -392,17 +391,15 @@ inputs. Clocks default to the same local-time behavior; randomness retains its
 current sampling policy. Keep simple functions simple instead of building a
 generic clock, filesystem, or scheduling framework.
 
-The transformer is not currently a pure function: alias lookup touches files and
-asset futures can wait on downloads. Make those facts visible. This refactor adds
-controlled fixtures and clearer ownership without silently promising purity or
-moving every renderer decision into a new public API.
+The transformer reads files for alias lookup and can wait on asset downloads.
+Document those effects and test them with controlled fixtures. Do not claim the
+renderer is pure or move every rendering decision into a new public API.
 
 ### P8. Structural improvements do not redefine failures or data safety
 
 For new internal contracts, fail fast with a useful error when prerequisites are
 missing or a closed session is used. Do not build recovery layers for programmer
-mistakes. This does not silently convert every existing partial workflow failure
-into a different public command outcome.
+mistakes. Preserve the command outcomes for existing partial workflow failures.
 
 The current implementation includes logged partial failures, panic paths for
 some malformed query templates, and replacement writes that are not atomic.
@@ -428,9 +425,9 @@ Add only APIs justified by actual consumers, keep policy behind their owner, and
 remove the old implementation when its replacement is adopted. File moves require
 review of both the removed and added sides so behavior/tests are not lost.
 
-### P10. Evidence and documentation evolve with the owner
+### P10. Move tests and update documentation with the code
 
-Tests move with the behavior they prove. Place new fixtures in the consuming
+Move tests with the code they cover. Place new fixtures in the consuming
 package's `testdata/`; keep canonical user examples under `example/configs/` and
 make tests find that owner reliably after package moves. Do not copy examples
 into several fixture directories and allow them to drift.
@@ -497,10 +494,9 @@ successful recovery, or a new definition of dry-run.
 
 ## 7. Required regression coverage and acceptance claims
 
-These are acceptance claims for the restructure, not evidence that the
-current suite already proves them. Implementers should bind each affected claim
-to suitable executable evidence before moving its owner. Reuse the existing
-verification contract; any new platform/race gate needs a separate bounded scope.
+These requirements define acceptance of the restructure. Before moving code,
+implementers should identify or add tests for each affected requirement. Reuse
+the existing verifier; new platform or race checks need a separate bounded scope.
 
 | Key | Claim | Representative conditions |
 | --- | --- | --- |
@@ -523,7 +519,7 @@ desired future safety. For example, a lost upload append after child deletion is
 a required characterization case, not a promise that this proposal makes upload
 recoverable. A worker error must not silently acquire a new exit status here.
 
-The full completion path remains `go run ./scripts/verify`. Package-specific
+Run `go run ./scripts/verify` before completing the refactor. Package-specific
 focused commands and fixture paths must be updated as each owner moves; retain
 the broad gate's test/vet/build scope. Coverage may show where more investigation
 is useful, but no percentage replaces these claims.
@@ -565,9 +561,8 @@ move independently buildable. Complete the switch, remove the replaced root
 implementations, and verify the resulting checkout as one unit.
 
 Keep the executable name, root build/install path, commands, flags, YAML, and
-documented outputs working. The tools and package moves do not guarantee that:
-the command/config acceptance cases and full verifier must demonstrate it. Update
-canonical examples, focused check paths, and current architecture documentation
+documented outputs working. Check them with the command/config acceptance tests
+and full verifier. Update canonical examples, focused check paths, and architecture documentation
 in the same change. Preserve the existing uncommitted agent-setup work and all
 unrelated files. No rollout framework or separate migration approval is needed.
 
@@ -582,8 +577,8 @@ unrelated files. No rollout framework or separate migration approval is needed.
 | D5 — Fail fast | Reject new internal contract misuse immediately; preserve existing CLI failure/partial-effect semantics and avoid new recovery layers |
 | D6 — Verification | Keep the existing full gate and add regression evidence for the affected behavior; speculative concurrency/platform work is not a prerequisite |
 
-**Completion:** implemented as a one-time direct switch under the owner's
-subsequent implementation goal. The old root workflow implementations are removed;
+**Completion:** the owner subsequently authorized implementation, and all callers
+were switched in one change. The old root workflow implementations are removed;
 the canonical executable and public support packages remain. See the
 [verification record](202609-repo-restructure-verification.md) for test continuity,
 compatibility evidence, independent reviews and limitations. This grants no

@@ -17,8 +17,9 @@ and preserve unrelated changes. Run development commands from the repository roo
 - Accepted change intent comes from the current task or accepted review. Git
   history explains past changes; do not treat a proposed refactor as accepted.
 
-Read the relevant owner and tests before editing. Update the linked documentation
-when changing its commands, configuration, or ownership; avoid copying it here.
+Read the relevant code, documentation, and tests before editing. Update the linked
+documentation when changing its commands, configuration, or ownership; avoid
+copying it here.
 
 ## Work and evidence
 
@@ -29,8 +30,8 @@ when changing its commands, configuration, or ownership; avoid copying it here.
 - Keep test fixtures local: HTTP test servers and temporary directories or Git
   repositories. Normal verification requires no Notion or LLM credentials.
 - Preserve CLI flags, YAML keys/defaults, Markdown output, package import paths,
-  and partial-failure behavior during a structural refactor. Route intentional
-  changes to those contracts as explicit behavior decisions.
+  and partial-failure behavior during a structural refactor. Intentional
+  changes to those contracts require an explicit behavior decision.
 - Live Notion/LLM runs, upload/discard operations, release publication, and remote
   writes need task authorization; setup and green checks do not grant it.
 

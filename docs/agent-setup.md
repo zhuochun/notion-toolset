@@ -1,21 +1,21 @@
 # Initial agent environment setup
 
 Snapshot: 2026-09-05, baseline commit `c252305` (clean working tree).
-Mode: **Retrofit** of an existing Go CLI, following the owner's request for initial
-agentic repository setup before a separate refactor. This is historical setup
-evidence; current commands belong to [DEVELOPMENT.md](../DEVELOPMENT.md).
+The owner requested agent instructions and verification for the existing Go CLI
+before a separate refactor. This record describes that setup; current commands
+are in [DEVELOPMENT.md](../DEVELOPMENT.md).
 
 ## Decisions and owners
 
-| Choice | Disposition | Reason and reversal/activation path |
+| Choice | Status | Reason and when to revisit |
 | --- | --- | --- |
 | Preserve Go module, root executable, CLI/YAML behavior, imports, release targets | Accepted existing constraints | Setup authority covers knowledge and fixed verification wiring, not production redesign. |
-| Short root AGENTS router plus existing contributor guide and observed architecture map | Reversible default | Makes config/export work discoverable; reconcile or simplify these routes when ownership changes. |
+| Short root AGENTS entry point, contributor guide, and architecture map | Reversible default | Helps contributors find config/export code and checks; update the links when code moves. |
 | Go-based shared verifier | Reversible default | Uses the existing runtime on Windows and Linux; reverting the workflow/doc wiring restores the direct three-command path. No Bash/Make dependency added. |
 | Config dispatch and export/read paths as representative work | Reversible default | Grounded in current tests and the upcoming refactor; rehearse discovery/checks without changing product behavior. |
 | Application package extraction and error/cancellation changes | Deferred | Resume with an accepted concrete refactor scope. |
-| Race/platform CI expansion and new application test oracles | Deferred | Requires a bounded verification change; current CI scope remains test/vet/build on Linux. |
-| Autonomous jobs, hooks, learning registry | Deferred | Reopen for repeated accepted corrections or demonstrated recurring agent-work friction; use existing task/review evidence first. |
+| Race/platform CI expansion and new application assertions | Deferred | Requires a bounded verification change; current CI scope remains test/vet/build on Linux. |
+| Autonomous jobs, hooks, learning registry | Deferred | Revisit when accepted corrections recur or agents repeatedly encounter the same problem; use evidence from tasks and reviews first. |
 
 Instruction inspection found the supplied global Windows execution contract and
 no root/ancestor AGENTS override or nested repository instructions at baseline.
@@ -25,7 +25,7 @@ Windows contract or change tool permissions.
 
 ## Before and after
 
-| Surface | Frozen baseline | Setup delta and limit |
+| Area | Before setup | Change and limits |
 | --- | --- | --- |
 | Full evidence | Direct `go test -count=1 ./...`, `go vet ./...`, `go build ./...` passed locally; CI had the same three stages | Shared `go run ./scripts/verify` executes those exact commands in order and stops on failure. All four existing packages remain selected; adds the verifier package and its tests. |
 | Test selection | 53 top-level test functions across four packages; no `t.Skip` calls found in existing tests | No existing test/production files changed. Five verifier tests added. The wrapper rejects arguments and nonempty effective GOFLAGS; direct focused commands remain supported. |
@@ -42,18 +42,18 @@ probe: root 20.5%, notionread 85.0%, retry 56.0%, transformer 5.2%; these are
 package-local statement measurements, not aggregate behavioral adequacy.
 
 - Config path: AGENTS -> DEVELOPMENT focused route -> `main.go`,
-  `main_test.go`, and `example/configs/`. Oracle: supported command mapping,
+  `main_test.go`, and `example/configs/`. Checks: supported command mapping,
   validation ordering, error wrapping, and example schema/template assertions.
 - Export path: AGENTS -> architecture map -> `export.go`, `notionread/doc.go`,
-  relevant tests -> focused export/read checks -> full verifier. Oracle: existing
+  relevant tests -> focused export/read checks -> full verifier. Checks: existing
   asset/filename/cleanup assertions plus read pagination/snapshot assertions.
 - Negative control: verifier test creates a separate temporary Go module whose
   `TestProbe` calls `t.Fatal("verification negative control")`. The real Go test
   command fails, the original diagnostic is retained, and vet/build do not run.
   A contrasting passing module reaches all three stages. Selector and wrong-root
-  cases check actionable rejection. No production mutation is needed.
+  cases check rejection messages. These tests do not change production code.
 
-## Final rehearsal results
+## Setup checks
 
 | Exercise | Result | Validity limit |
 | --- | --- | --- |
@@ -64,18 +64,16 @@ package-local statement measurements, not aggregate behavioral adequacy.
 | `git diff HEAD --check`, inspection of new files, and diff against existing Go files/module/README/release workflow | Passed; existing production code, tests, dependencies, and release wiring outside the reusable verifier remain unchanged | New verifier files extend package selection; a passing gate does not prove repository cleanliness |
 | Hosted CI, minimum Go 1.25 runtime, native Linux/macOS execution, live APIs, race detector | Not run | Follow up only when the relevant task needs that evidence |
 
-The fresh consumer loaded `AGENTS.md`, `README.md`, `DEVELOPMENT.md`,
+The separate agent loaded `AGENTS.md`, `README.md`, `DEVELOPMENT.md`,
 `docs/architecture.md`, `main.go`, `main_test.go`, `export.go`, `export_test.go`,
 `example/configs/export.yaml`, `go.mod`, `scripts/verify/main.go`, and
 `.github/workflows/verify.yml`. It used symbol searches to find the scenario
-owners and did not need the historical setup record. It correctly surfaced the
-runtime-versus-example YAML validation distinction and partial export failure
-limit without treating either as permission to change behavior.
+owners without needing this setup record. It identified the difference between
+runtime and example YAML validation, and the limits of export error handling,
+without treating either as permission to change behavior.
 
-The local and CI copies of the three-command recipe now route through one
-implementation. Underlying Go commands remain available; no pre-existing path
-was deleted, and no commit, push, remote setting, deployment, or release action
-was performed. No setup slice remains blocked. Reopen this setup if a command or
-owner moves, a focused route goes stale, or an accepted correction demonstrates
-a reusable environment gap. The application refactor remains the next separate
-scope decision.
+Setup completed without deleting an existing command path, committing, pushing,
+changing remote settings, deploying, or releasing. Revisit the setup if code or
+commands move, guidance becomes outdated, or an accepted correction reveals a
+recurring environment problem. At this point, the application refactor still
+needed a separate scope decision.

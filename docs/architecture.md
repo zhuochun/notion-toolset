@@ -1,13 +1,13 @@
 # Current code ownership
 
-One Go module and one root executable, with internal packages for workflow
-ownership. The direct-switch decision is recorded in the
+The repository has one Go module, one root executable, and internal packages for
+each workflow. The decision to move all callers in one change is recorded in the
 [restructure spec](specs/202609-repo-restructure.md). Update this map and focused
 checks in [DEVELOPMENT.md](../DEVELOPMENT.md) when changing an owner.
 
 ## Application and effects
 
-| Responsibility | Current owner | Important boundary |
+| Responsibility | Package or file | Constraints |
 | --- | --- | --- |
 | Process exit | `main.go` | Thin canonical executable; root build/install path retained |
 | Flags/help/diagnostics | `internal/cli` | Fresh flag set and stderr logger per invocation; returns exit classification |
@@ -24,15 +24,16 @@ checks in [DEVELOPMENT.md](../DEVELOPMENT.md) when changing an owner.
 | Reverse upload, Git state, comparison, resolve UI | `internal/upload` | Owns modes, fresh pre-delete reads and replacement effects; HTML embedded at build time |
 | LLM workflows | `internal/llm` | Filtering, grouping, request composition and output; app supplies lazy client setup |
 | Local HTTP fixtures | `internal/notiontest` | Test consumers only; redirects SDK requests to local servers |
-| Shared full gate | `scripts/verify` | Fixed test/vet/build scope for local and CI use |
+| Full verification | `scripts/verify` | Fixed test/vet/build scope for local and CI use |
 
 ## Representative paths
 
 **Config/dispatch:** root -> CLI -> app -> config/workflow. App checks the token,
 decodes config, selects configurations and constructs a new workflow for each
-repeat. Validate retains default/setup timing. Clock/random function fields have
-ordinary production defaults. Root tests execute the built binary outside the
-repository; CLI/app/config tests cover isolation, ordering, selection and examples.
+repeat. Each workflow's `Validate` method applies its defaults and setup in the
+required order. Clock/random function fields have production defaults. Root tests
+execute the built binary outside the repository; CLI/app/config tests cover
+isolation, ordering, selection and examples.
 
 **Export:** `Exporter.Run` -> database scan through `DatabaseQuery`/`notionread`
 -> page workers -> best-effort block snapshot -> `transformer` -> local Markdown
@@ -41,7 +42,7 @@ scan. Tests distinguish scan failures from logged worker failures and preserve
 helper contracts. Public notionread tests retain pagination, completeness,
 cancellation and concurrency evidence.
 
-**Upload:** discover candidates -> invoke app-supplied reader factory once -> lend
+**Upload:** discover candidates -> invoke app-supplied reader factory once -> pass
 that same reader to `exporter.RenderSession` -> compare -> selected mode.
 Replacement optionally updates title, freshly paginates children through the
 shared reader, deletes in order, then appends. It never reuses the comparison
@@ -51,9 +52,10 @@ pagination and failure-order evidence.
 
 ## Resource and dependency boundaries
 
-RenderSession owns asset workers and synchronous rendering, serialized with Close
-by one mutex. Failed reads leave it reusable; Close waits/drains, is idempotent,
-and rejects subsequent rendering before I/O. It does not close its borrowed
+`RenderSession` owns asset workers and synchronous rendering. One mutex serializes
+rendering and `Close`. Failed reads leave the session reusable. `Close` waits for
+active rendering and drains the asset workers; repeated calls do nothing.
+Rendering after close fails before I/O. The session does not close its borrowed
 reader. Normal upload closes on return; resolve retains it for the existing
 process/server lifetime. Bulk export uses the same private rendering helper
 without serializing its page-worker pool or buffering entire pages.
@@ -89,7 +91,8 @@ Git, parser and HTTP concerns remain files in one package.
 - Rendering: transformer owns bytes/aliases/slugs, exporter owns assets/lifetime,
   notionread owns completeness.
 
-The [verification record](specs/202609-repo-restructure-verification.md) maps the
-accepted claims to evidence. Local tests and the full gate do not establish live
-service success, exhaustive Markdown round trips, atomic writes or race freedom.
-Existing partial failures and panic paths are characterized, not repaired here.
+The [verification record](specs/202609-repo-restructure-verification.md) lists the
+tests for each restructure requirement. Local tests and the full verifier do not
+establish live service success, exhaustive Markdown round trips, atomic writes or
+race freedom.
+Tests document existing partial failures and panic paths; those behaviors remain.

@@ -1,8 +1,8 @@
 # Configuration reference
 
-The YAML envelope and tags live in [internal/config/config.go](../internal/config/config.go).
-Commands own validation/defaults; decoding itself applies none. Only the selected
-command's section is validated. Runtime uses permissive `yaml.Unmarshal`: unknown
+The YAML structure and tags are defined in [internal/config/config.go](../internal/config/config.go).
+Commands validate settings and apply defaults; decoding itself does neither. Only
+the selected command's section is validated. Runtime uses permissive `yaml.Unmarshal`: unknown
 fields are ignored, omitted/null scalar values remain zero, and malformed/type-
 incompatible YAML errors are returned. Canonical example tests use stricter schema
 checks to catch typos; they do not change runtime decoding.
@@ -22,8 +22,8 @@ LLM still needs a prompt.
 | `DOT_OPENAI_KEY` | Required by LLM validation after its prompt check |
 | `DOT_OPENAI_URL` | Optional OpenAI-compatible base URL, applied when constructing the LLM client; absent uses the SDK default endpoint |
 
-No dotenv loader or additional environment config layer is introduced. Avoid
-sharing debug output containing private configuration.
+Set these variables in the process environment; the CLI does not load dotenv
+files. Avoid sharing debug output containing private configuration.
 
 ## Journals
 
@@ -99,10 +99,10 @@ as upload actions. See the [commands reference](commands.md) for their effects.
 | `debugCache` | Default false; export writes diagnostic JSON under `temp/` if available; errors are logged |
 
 `exportSpeed` is intended to be finite. The internal render-session constructor
-rejects unnormalized/NaN values before workers start; this is an internal
-prerequisite, not a new config normalization layer.
+requires a normalized value and rejects NaN before workers start. It does not
+normalize configuration itself.
 
-`exporter.markdown` uses the existing public
+`exporter.markdown` uses the public
 [transformer.MarkdownConfig](../transformer/markdown.go):
 
 | Field | Default / effect |

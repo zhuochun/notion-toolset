@@ -24,15 +24,15 @@ preserved. No live Notion/LLM operations, commits, publication or release were r
 
 Golden expectations reflect existing renderer output, including the `Page` label
 on internal page links. The public renderer implementation was not changed to
-make fixtures pass. Regression tests describe compatibility behavior, not desired
-future recovery guarantees.
+make fixtures pass. Regression tests document the behavior preserved by the
+refactor. They do not guarantee recovery from failures.
 
 ## Verification and review
 
 - Environment: Go 1.26.2, Windows/amd64; module minimum and release targets unchanged.
 - `go run ./scripts/verify`: passed tests without cache, vet, and build.
-- Test inventory: all 58 original top-level tests retained; 81 now pass, with no
-  skipped tests. The fixture-helper package has no standalone tests and is
+- Test inventory: all 58 original top-level tests retained; 81 passed at completion,
+  with no skipped tests. The fixture-helper package has no standalone tests and is
   exercised by its consumers.
 - Baseline/current binary comparison: eight offline flag/help/config/error/repeat
   cases matched exit code and output after executable-name/timestamp normalization.
