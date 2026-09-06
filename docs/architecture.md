@@ -16,7 +16,8 @@ checks in [DEVELOPMENT.md](../DEVELOPMENT.md) when changing an owner.
 | Daily and weekly journal creation | `internal/journal` | Local time and query/property templates; individual create failures log and continue |
 | Flashback, duplicate detection, collection | `internal/flashback`, `internal/duplicate`, `internal/collector` | Own selection/reporting and Notion writes; collector completes discovery and full scan before any writes |
 | Query and write-template construction | `internal/notionops` | Shared query/template/append mechanisms and tuned reader construction; no workflow decisions |
-| Notion reads | `notionread/`, especially `doc.go` | Owns retry classification, rate limiting, pagination, and structural snapshots. Callers choose strict or best-effort completeness and page-graph traversal policy. |
+| Notion HTTP requests | `notionhttp/`, installed by `internal/app` | Shared per-client pacing and Retry-After cooldown for every Notion read/write; bounded retries of explicit 429/529 rejections. Does not replay ambiguous write failures. |
+| Notion reads | `notionread/`, especially `doc.go` | Owns read retry classification, optional slower read limits, pagination, and structural snapshots. Transport retry exhaustion is terminal. Callers choose strict or best-effort completeness and page-graph traversal policy. |
 | Retry mechanism | `retry/` | Owns backoff and cancellation during waits; callers supply retry policy. |
 | Markdown rendering and supporting filename/alias logic | `transformer/` | Consumes snapshots; asset futures connect rendering to downloads. Rendering is not the Notion read owner. |
 | Export orchestration, files, assets, cleanup | `internal/exporter` | Owns bulk workers/streaming files and shared concrete RenderSession; worker errors log rather than fail Run |
@@ -67,6 +68,9 @@ byte-length eligibility. Their callers retain separate error policies: per-page
 workers log and continue, while group execution returns the error.
 
 Workflows use config/notionops/notionread/transformer; none imports app or CLI.
+App installs notionhttp on the shared Notion SDK client, including commands that
+call the SDK directly. notionread recognizes its exhaustion marker to avoid
+multiplying retries. HTTP cooldown is per client, not shared between processes.
 Upload additionally uses exporter; exporter never imports upload. Public packages
 never import workflows. Config references the existing MarkdownConfig instead of
 copying it. There are no compatibility facades or secondary executables. Upload's

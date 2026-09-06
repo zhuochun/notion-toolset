@@ -7,6 +7,7 @@ import (
 	"net"
 
 	"github.com/dstotijn/go-notion"
+	"github.com/zhuochun/notion-toolset/notionhttp"
 	"github.com/zhuochun/notion-toolset/retry"
 	"golang.org/x/time/rate"
 )
@@ -179,6 +180,10 @@ func (r *Reader) read(ctx context.Context, fn func() error) error {
 }
 
 func isRetryable(err error) bool {
+	var exhausted *notionhttp.ExhaustedError
+	if errors.As(err, &exhausted) {
+		return false
+	}
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return false
 	}

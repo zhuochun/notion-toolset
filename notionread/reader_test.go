@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/dstotijn/go-notion"
+	"github.com/zhuochun/notion-toolset/notionhttp"
 	"golang.org/x/time/rate"
 )
 
@@ -25,6 +26,7 @@ func TestIsRetryable(t *testing.T) {
 		want bool
 	}{
 		{name: "rate limited", err: fmt.Errorf("query: %w", notion.ErrRateLimited), want: true},
+		{name: "exhausted transport", err: fmt.Errorf("query: %w", &notionhttp.ExhaustedError{Err: notion.ErrRateLimited}), want: false},
 		{name: "conflict", err: notion.ErrConflict, want: true},
 		{name: "internal server", err: notion.ErrInternalServer, want: true},
 		{name: "service unavailable", err: notion.ErrServiceUnavailable, want: true},

@@ -3,11 +3,13 @@ package app
 import (
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 
 	"github.com/dstotijn/go-notion"
 	"github.com/sashabaranov/go-openai"
 	"github.com/zhuochun/notion-toolset/internal/notionops"
+	"github.com/zhuochun/notion-toolset/notionhttp"
 	"github.com/zhuochun/notion-toolset/notionread"
 )
 
@@ -37,7 +39,7 @@ func (r Runtime) notionClient(token string) *notion.Client {
 	if r.NewNotion != nil {
 		return r.NewNotion(token)
 	}
-	return notion.NewClient(token)
+	return notion.NewClient(token, notion.WithHTTPClient(&http.Client{Transport: notionhttp.NewTransport(nil)}))
 }
 
 func (r Runtime) llmClient() (*openai.Client, error) {

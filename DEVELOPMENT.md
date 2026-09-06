@@ -68,7 +68,7 @@ propagation. Its expected failure is captured by a passing parent test.
 | Upload and resolve UI | `go test -count=1 ./internal/upload` | Temporary Git repositories, mode effects, fresh pre-delete pagination/failure order and embedded HTTP handlers |
 | Journals, selection and collection | `go test -count=1 ./internal/journal ./internal/flashback ./internal/duplicate ./internal/collector` | Date boundaries, fallback, OR keys, discovery/scan-before-write and batch continuation |
 | LLM and shared writes | `go test -count=1 ./internal/llm ./internal/notionops` | Local completions, chain/group/filter behavior, text/JSON, templates and batching |
-| Read pagination/snapshots and retry | `go test -count=1 ./notionread ./retry` | Local API fixtures, cancellation, concurrency, backoff |
+| HTTP pacing, read pagination/snapshots and retry | `go test -count=1 ./notionhttp ./notionread ./retry` | Local API fixtures, shared cooldown, replayed payloads, exhaustion, cancellation, concurrency, backoff |
 | Markdown transformation | `go test -count=1 ./transformer` | Nested blocks, properties, aliases, Unicode, assets/fallback and existing child-database behavior |
 | Verification wiring | `go test -count=1 ./scripts/verify` | Real test failure propagation, argument/GOFLAGS rejection, success stages |
 | Coverage diagnosis | `go test -count=1 -cover ./...` | Statement coverage, not behavioral adequacy |

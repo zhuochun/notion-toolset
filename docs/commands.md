@@ -39,6 +39,24 @@ are not converted into ordinary validation errors. Logs normally go to stderr;
 transformer alias diagnostics can write to stdout. A successful exit can include
 the partial failures described below.
 
+## Notion request limits
+
+All CLI Notion reads and writes share a paced HTTP client (three requests per
+second, burst one). HTTP 429 and 529 rejections are retried up to five total
+attempts, preserving the request body. Each retry waits at least the server's
+`Retry-After` value (seconds or HTTP date) and the exponential fallback of
+1, 2, 4, then 8 seconds. Missing or invalid headers use the fallback. Cancellation
+interrupts waiting. Retry exhaustion returns an error to the existing workflow
+failure policy; the read layer does not start another batch of those retries.
+
+A valid `Retry-After` pauses subsequent requests from the same client, including
+other workers. Generic server errors and network failures do not cause automatic
+write replay. Existing read retries remain available for transient read errors.
+This budget is local to each client: scheduled jobs sharing a Notion token should
+run sequentially to avoid competing for the same server limit. Export/LLM speed
+settings can impose a slower read limit. External asset, URL-check, and LLM API
+requests are separate from the Notion client.
+
 ## Workflow behavior
 
 | Command / YAML section | Inputs and effects | Failure behavior |
@@ -117,6 +135,7 @@ children** using the same reader as comparison, deletes them in order, and appen
 replacement blocks in batches of 100. Title failure prevents child reads; read
 failure prevents all deletes/appends; delete failure stops later deletes/appends.
 An append failure can leave the page partly or entirely cleared. Earlier title,
-delete, or append effects remain. There are no automatic write retries or rollback.
+delete, or append effects remain. Only explicit rate-limit/overload rejections
+receive automatic write retries as described above; there is no rollback.
 Inspect Notion and retained local/Git content before deciding what to retry; Git
 discard changes local state and is not a remote recovery action.
